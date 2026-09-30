@@ -1,0 +1,198 @@
+import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
+import type { PermissionLevel } from '@/lib/services/rbac-service'
+
+/**
+ * Get the currently authenticated user from the server.
+ * Returns null if not authenticated (does not redirect).
+ */
+export async function getUser() {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    return user
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Require authentication — redirects to login if not authenticated.
+ * Use in Server Components and Server Actions that require a user.
+ */
+export async function requireUser() {
+  const user = await getUser()
+  if (!user) {
+    redirect('/login')
+  }
+  return user
+}
+
+/**
+ * Require the user to be a member of a specific business.
+ * Validates the business membership and permission level.
+ *
+ * @param businessId - The business UUID to validate access for
+ * @param module - The module being accessed (for permission check)
+ * @param requiredLevel - Minimum permission level required ('read' | 'write' | 'delete' | 'full')
+ */
+export async function requireBusinessAccess(
+  businessId: string,
+  module?: string,
+  requiredLevel: PermissionLevel = 'read'
+) {
+  const user = await requireUser()
+
+  const { prisma } = await import('@/lib/db/prisma')
+
+  const membership = await prisma.businessUser.findUnique({
+    where: {
+      userId_businessId: {
+        userId: user.id,
+        businessId,
+      },
+    },
+    include: {
+      business: true,
+      roleModel: {
+        include: {
+          rolePermissions: {
+            include: {
+              permission: true,
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!membership || membership.status !== 'active') {
+    throw new AccessDeniedError('You do not have access to this business.')
+  }
+
+  // Check module-level permissions when a module is requested
+  if (module) {
+    const { RBACService } = await import('@/lib/services/rbac-service')
+    const hasAccess = RBACService.hasModuleAccess(
+      membership.role,
+      module,
+      requiredLevel,
+      membership
+    )
+    if (!hasAccess) {
+      throw new AccessDeniedError(
+        `Insufficient permissions: Role '${membership.role}' cannot perform '${requiredLevel}' operations on module '${module}'.`
+      )
+    }
+  }
+
+  return {
+    userId: user.id,
+    businessId,
+    role: membership.role,
+    membership,
+    business: membership.business,
+  }
+}
+
+/**
+ * Require a specific permission code for a business.
+ */
+export async function requirePermission(
+  businessId: string,
+  permissionCode: string
+) {
+  const user = await requireUser()
+  const { prisma } = await import('@/lib/db/prisma')
+  const { RBACService } = await import('@/lib/services/rbac-service')
+
+  const membership = await prisma.businessUser.findUnique({
+    where: {
+      userId_businessId: {
+        userId: user.id,
+        businessId,
+      },
+    },
+    include: {
+      business: true,
+      roleModel: {
+        include: {
+          rolePermissions: {
+            include: {
+              permission: true,
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!membership || membership.status !== 'active') {
+    throw new AccessDeniedError('You do not have access to this business.')
+  }
+
+  const allowed = RBACService.hasPermission(membership, permissionCode)
+  if (!allowed) {
+    throw new AccessDeniedError(
+      `Permission denied: Missing required permission '${permissionCode}'.`
+    )
+  }
+
+  return {
+    userId: user.id,
+    businessId,
+    role: membership.role,
+    membership,
+    business: membership.business,
+  }
+}
+
+export class AccessDeniedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'AccessDeniedError'
+  }
+}
+
+export class ValidationError extends Error {
+  public readonly field?: string
+  constructor(message: string, field?: string) {
+    super(message)
+    this.name = 'ValidationError'
+    this.field = field
+  }
+}
+
+export class NotFoundError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'NotFoundError'
+  }
+}
+
+/**
+ * Platform Admin emails whitelist / configuration.
+ * Only explicit emails defined in PLATFORM_ADMIN_EMAILS env var are permitted.
+ * No domain suffix or demo bypass is allowed.
+ */
+export function isPlatformAdmin(email?: string | null): boolean {
+  if (!email) return false
+  const adminEmailsEnv = process.env.PLATFORM_ADMIN_EMAILS || ''
+  if (!adminEmailsEnv.trim()) return false
+  const allowed = adminEmailsEnv
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+  return allowed.includes(email.toLowerCase())
+}
+
+/**
+ * Require platform administrator access — rejects tenant users.
+ */
+export async function requirePlatformAdmin() {
+  const user = await requireUser()
+  if (!isPlatformAdmin(user.email)) {
+    throw new AccessDeniedError('Platform administrator access required.')
+  }
+  return user
+}
