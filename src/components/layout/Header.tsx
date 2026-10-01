@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import type { BusinessUser, Business } from '@prisma/client'
-import { Bell, ChevronDown, LogOut, User, Settings, Search } from 'lucide-react'
+import { Bell, ChevronDown, LogOut, User, Settings, Search, Menu } from 'lucide-react'
 import { logoutAction } from '@/actions/auth/auth-actions'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
@@ -12,6 +12,7 @@ import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
 import { ToastProvider } from '@/components/ui/ToastProvider'
 import { GlobalSearchModal } from '@/components/layout/GlobalSearchModal'
+import { useSidebar } from '@/components/layout/AppShell'
 
 type MembershipWithBusiness = BusinessUser & { business: Business }
 
@@ -23,6 +24,7 @@ interface HeaderProps {
 export function Header({ user, memberships }: HeaderProps) {
   const locale = useLocale()
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const { toggleMobile } = useSidebar()
 
   const userName =
     (user.user_metadata?.full_name as string) ??
@@ -52,8 +54,17 @@ export function Header({ user, memberships }: HeaderProps) {
       <ToastProvider />
       <GlobalSearchModal isOpen={searchModalOpen} onClose={() => setSearchModalOpen(false)} />
 
-      {/* Left: breadcrumb / page context */}
+      {/* Left: mobile menu button + breadcrumb / page context */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <button
+          type="button"
+          id="mobile-menu-btn"
+          className="mobile-menu-btn"
+          onClick={toggleMobile}
+          aria-label="Toggle navigation menu"
+        >
+          <Menu size={20} />
+        </button>
         <Breadcrumbs />
       </div>
 

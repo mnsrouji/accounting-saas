@@ -41,8 +41,10 @@ import {
   Building2,
   Database,
   Sparkles,
+  X,
 } from 'lucide-react'
 import { cn } from '@/utils'
+import { useSidebar } from '@/components/layout/AppShell'
 
 type MembershipWithBusiness = BusinessUser & { business: Business }
 
@@ -330,35 +332,49 @@ export function Sidebar({ memberships, userId }: SidebarProps) {
   const searchPlaceholder =
     locale === 'ar' ? 'بحث في القوائم...' : locale === 'tr' ? 'Menüde ara...' : 'Search menu...'
 
+  const { setMobileOpen } = useSidebar()
+
   return (
     <aside className="sidebar">
       {/* Brand Header */}
-      <div className="sidebar-logo" style={{ padding: '1.25rem 1rem', display: 'flex', alignItems: 'center', gap: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
-        <div
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            background: 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            fontWeight: 800,
-            fontSize: '1.125rem',
-            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)',
-          }}
+      <div className="sidebar-logo" style={{ padding: '1.25rem 1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              background: 'linear-gradient(135deg, #6366f1 0%, #4338ca 100%)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'white',
+              fontWeight: 800,
+              fontSize: '1.125rem',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)',
+            }}
+          >
+            A
+          </div>
+          <div>
+            <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.125rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+              AccountFlow
+            </div>
+            <div style={{ fontSize: '0.6875rem', color: '#818cf8', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+              Enterprise ERP
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile Close Button */}
+        <button
+          type="button"
+          className="mobile-sidebar-close"
+          onClick={() => setMobileOpen(false)}
+          aria-label="Close menu"
         >
-          A
-        </div>
-        <div>
-          <div style={{ fontFamily: 'Outfit, sans-serif', fontSize: '1.125rem', fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-            AccountFlow
-          </div>
-          <div style={{ fontSize: '0.6875rem', color: '#818cf8', fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-            Enterprise ERP
-          </div>
-        </div>
+          <X size={18} />
+        </button>
       </div>
 
       {/* Business Switcher */}

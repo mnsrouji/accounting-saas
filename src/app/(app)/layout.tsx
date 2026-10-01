@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/auth/require-auth'
 import { prisma } from '@/lib/db/prisma'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { Header } from '@/components/layout/Header'
+import { AppShell } from '@/components/layout/AppShell'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -31,7 +32,7 @@ export default async function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="app-shell">
+    <AppShell>
       <Sidebar memberships={memberships} userId={user.id} />
       <div className="main-content">
         <Header user={user} memberships={memberships} />
@@ -39,6 +40,6 @@ export default async function AppLayout({ children }: AppLayoutProps) {
           {children}
         </main>
       </div>
-    </div>
+    </AppShell>
   )
 }
