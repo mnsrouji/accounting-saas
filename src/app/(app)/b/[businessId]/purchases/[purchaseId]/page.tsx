@@ -166,13 +166,10 @@ export default async function PurchaseInvoiceDetailPage({ params }: PageProps) {
                     <div style={{ fontWeight: 600 }}>{line.product?.name || line.description}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{line.description}</div>
                   </td>
-                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: 'center', color: 'var(--text-secondary)' }}>
-                    {line.warehouse?.name || '—'}
-                  </td>
-                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: 'center' }}>{line.quantity.toString()}</td>
-                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right' }}>{formatCurrency(line.unitPrice.toString(), purchase.currencyCode)}</td>
-                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right' }}>{formatCurrency(line.taxAmount.toString(), purchase.currencyCode)}</td>
-                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right', fontWeight: 600 }}>{formatCurrency(line.totalAmount.toString(), purchase.currencyCode)}</td>
+                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: 'center' }}>{(line.quantity ?? 0).toString()}</td>
+                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right' }}>{formatCurrency((line.unitPrice ?? 0).toString(), purchase.currencyCode)}</td>
+                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right' }}>{formatCurrency((line.taxAmount ?? 0).toString(), purchase.currencyCode)}</td>
+                  <td style={{ padding: '0.875rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right', fontWeight: 600 }}>{formatCurrency((line.lineTotal ?? line.totalAmount ?? 0).toString(), purchase.currencyCode)}</td>
                 </tr>
               ))}
             </tbody>
@@ -188,7 +185,7 @@ export default async function PurchaseInvoiceDetailPage({ params }: PageProps) {
               {isAr ? `قيد اليومية المحاسبي المرتبط (${journalEntry.entryNumber})` : isTr ? `Bağlı Muhasebe Yevmiye Kaydı (${journalEntry.entryNumber})` : `Linked Accounting Journal Entry (${journalEntry.entryNumber})`}
             </span>
             <span className="badge badge-success">
-              {isAr ? 'مرحل' : isTr ? 'İşlendi' : journalEntry.status}
+              {isAr ? 'مرحل' : isTr ? 'İشlendi' : journalEntry.status}
             </span>
           </div>
           <div style={{ padding: 0, overflowX: 'auto' }}>
@@ -212,11 +209,11 @@ export default async function PurchaseInvoiceDetailPage({ params }: PageProps) {
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 500 }}>
                       {l.account?.code} - {l.account?.name}
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right', fontWeight: l.debitAmount.gt(0) ? 600 : 400 }}>
-                      {l.debitAmount.gt(0) ? formatCurrency(l.debitAmount.toString(), journalEntry.currencyCode) : '—'}
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right', fontWeight: Number(l.debitAmount ?? 0) > 0 ? 600 : 400 }}>
+                      {Number(l.debitAmount ?? 0) > 0 ? formatCurrency(l.debitAmount.toString(), journalEntry.currencyCode) : '—'}
                     </td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right', fontWeight: l.creditAmount.gt(0) ? 600 : 400 }}>
-                      {l.creditAmount.gt(0) ? formatCurrency(l.creditAmount.toString(), journalEntry.currencyCode) : '—'}
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: isAr ? 'left' : 'right', fontWeight: Number(l.creditAmount ?? 0) > 0 ? 600 : 400 }}>
+                      {Number(l.creditAmount ?? 0) > 0 ? formatCurrency(l.creditAmount.toString(), journalEntry.currencyCode) : '—'}
                     </td>
                   </tr>
                 ))}
@@ -228,3 +225,4 @@ export default async function PurchaseInvoiceDetailPage({ params }: PageProps) {
     </div>
   )
 }
+
