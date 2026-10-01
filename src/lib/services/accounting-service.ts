@@ -575,4 +575,72 @@ export class AccountingService {
       isBalanced: totalDebitSum.equals(totalCreditSum),
     }
   }
+
+  /**
+   * Idempotently ensure the business has the standard Chart of Accounts.
+   * If any standard account is missing, it is created.
+   */
+  static async ensureStandardChartOfAccounts(businessId: string, txPrisma?: any) {
+    const client = txPrisma || prisma
+    const existing = await client.chartOfAccount.findMany({
+      where: { businessId },
+      select: { code: true },
+    })
+    const existingCodes = new Set(existing.map((a: { code: string }) => a.code))
+
+    const toCreate = DEFAULT_CHART_OF_ACCOUNTS.filter((acc) => !existingCodes.has(acc.code))
+    if (toCreate.length > 0) {
+      await client.chartOfAccount.createMany({
+        data: toCreate.map((account) => ({
+          businessId,
+          code: account.code,
+          name: account.name,
+          type: account.type,
+          normalBalance: account.normalBalance,
+          isHeader: account.isHeader ?? false,
+          isSystem: account.isSystem ?? false,
+          sortOrder: account.sortOrder,
+        })),
+        skipDuplicates: true,
+      })
+    }
+  }
 }
+
+export const DEFAULT_CHART_OF_ACCOUNTS = [
+  // Assets (1000s)
+  { code: '1000', name: 'Assets', type: 'asset' as const, normalBalance: 'debit' as const, isHeader: true, sortOrder: 100 },
+  { code: '1100', name: 'Cash and Cash Equivalents', type: 'asset' as const, normalBalance: 'debit' as const, isSystem: true, sortOrder: 110 },
+  { code: '1110', name: 'Main Operating Cash', type: 'asset' as const, normalBalance: 'debit' as const, isSystem: true, sortOrder: 111 },
+  { code: '1200', name: 'Bank Accounts', type: 'asset' as const, normalBalance: 'debit' as const, isSystem: true, sortOrder: 120 },
+  { code: '1210', name: 'Main Bank Account', type: 'asset' as const, normalBalance: 'debit' as const, isSystem: true, sortOrder: 121 },
+  { code: '1300', name: 'Accounts Receivable', type: 'asset' as const, normalBalance: 'debit' as const, isSystem: true, sortOrder: 130 },
+  { code: '1400', name: 'Inventory', type: 'asset' as const, normalBalance: 'debit' as const, isSystem: true, sortOrder: 140 },
+  { code: '1500', name: 'Prepaid Expenses', type: 'asset' as const, normalBalance: 'debit' as const, sortOrder: 150 },
+
+  // Liabilities (2000s)
+  { code: '2000', name: 'Liabilities', type: 'liability' as const, normalBalance: 'credit' as const, isHeader: true, sortOrder: 200 },
+  { code: '2100', name: 'Accounts Payable', type: 'liability' as const, normalBalance: 'credit' as const, isSystem: true, sortOrder: 210 },
+  { code: '2200', name: 'Tax Payable', type: 'liability' as const, normalBalance: 'credit' as const, isSystem: true, sortOrder: 220 },
+  { code: '2300', name: 'Accrued Expenses', type: 'liability' as const, normalBalance: 'credit' as const, sortOrder: 230 },
+
+  // Equity (3000s)
+  { code: '3000', name: 'Equity', type: 'equity' as const, normalBalance: 'credit' as const, isHeader: true, sortOrder: 300 },
+  { code: '3100', name: "Owner's Equity", type: 'equity' as const, normalBalance: 'credit' as const, sortOrder: 310 },
+  { code: '3200', name: 'Retained Earnings', type: 'equity' as const, normalBalance: 'credit' as const, isSystem: true, sortOrder: 320 },
+
+  // Revenue (4000s)
+  { code: '4000', name: 'Revenue', type: 'revenue' as const, normalBalance: 'credit' as const, isHeader: true, sortOrder: 400 },
+  { code: '4100', name: 'Sales Revenue', type: 'revenue' as const, normalBalance: 'credit' as const, isSystem: true, sortOrder: 410 },
+  { code: '4200', name: 'Service Revenue', type: 'revenue' as const, normalBalance: 'credit' as const, sortOrder: 420 },
+  { code: '4900', name: 'Other Income', type: 'revenue' as const, normalBalance: 'credit' as const, sortOrder: 490 },
+
+  // Expenses (5000s)
+  { code: '5000', name: 'Expenses', type: 'expense' as const, normalBalance: 'debit' as const, isHeader: true, sortOrder: 500 },
+  { code: '5100', name: 'Cost of Goods Sold', type: 'expense' as const, normalBalance: 'debit' as const, isSystem: true, sortOrder: 510 },
+  { code: '5200', name: 'Salaries & Wages', type: 'expense' as const, normalBalance: 'debit' as const, sortOrder: 520 },
+  { code: '5300', name: 'Rent Expense', type: 'expense' as const, normalBalance: 'debit' as const, sortOrder: 530 },
+  { code: '5400', name: 'Utilities', type: 'expense' as const, normalBalance: 'debit' as const, sortOrder: 540 },
+  { code: '5500', name: 'Marketing & Advertising', type: 'expense' as const, normalBalance: 'debit' as const, sortOrder: 550 },
+  { code: '5900', name: 'Other Expenses', type: 'expense' as const, normalBalance: 'debit' as const, sortOrder: 590 },
+]

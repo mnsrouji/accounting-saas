@@ -180,13 +180,74 @@ export class PurchaseService {
       }
 
       // 5. Generate & Post Accounting Journal Entry
-      const apAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2100' } }) // Accounts Payable
-      const invAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '1400' } }) // Merchandise Inventory
-      const vatAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2210' } }) ||
-                        await tx.chartOfAccount.findFirst({ where: { businessId, code: '2200' } }) // Input VAT
+      // Ensure the business has standard Chart of Accounts seeded
+      await AccountingService.ensureStandardChartOfAccounts(businessId, tx)
 
-      if (!apAccount || !invAccount) {
-        throw new AccountingError('System Chart of Accounts (2100 AP, 1400 Inventory) must exist.')
+      // Resolve Accounts Payable (2100 or any AP liability account)
+      let apAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2100' } })
+      if (!apAccount) {
+        apAccount = await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'liability', isHeader: false, code: { startsWith: '21' } },
+          orderBy: { code: 'asc' },
+        })
+      }
+      if (!apAccount) {
+        apAccount = await tx.chartOfAccount.create({
+          data: {
+            businessId,
+            code: '2100',
+            name: 'Accounts Payable',
+            type: 'liability',
+            normalBalance: 'credit',
+            isSystem: true,
+            sortOrder: 210,
+          },
+        })
+      }
+
+      // Resolve Inventory Account (1400 or any inventory asset account)
+      let invAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '1400' } })
+      if (!invAccount) {
+        invAccount = await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'asset', isHeader: false, code: { startsWith: '14' } },
+          orderBy: { code: 'asc' },
+        })
+      }
+      if (!invAccount) {
+        invAccount = await tx.chartOfAccount.create({
+          data: {
+            businessId,
+            code: '1400',
+            name: 'Inventory',
+            type: 'asset',
+            normalBalance: 'debit',
+            isSystem: true,
+            sortOrder: 140,
+          },
+        })
+      }
+
+      // Resolve Input VAT (2210 / 2200 or tax account)
+      let vatAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2210' } }) ||
+                        await tx.chartOfAccount.findFirst({ where: { businessId, code: '2200' } })
+      if (!vatAccount && taxAmountTotal.gt(0)) {
+        vatAccount = await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'liability', isHeader: false, code: { startsWith: '22' } },
+          orderBy: { code: 'asc' },
+        })
+        if (!vatAccount) {
+          vatAccount = await tx.chartOfAccount.create({
+            data: {
+              businessId,
+              code: '2200',
+              name: 'Tax Payable',
+              type: 'liability',
+              normalBalance: 'credit',
+              isSystem: true,
+              sortOrder: 220,
+            },
+          })
+        }
       }
 
       const journalLines: any[] = [

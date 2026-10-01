@@ -284,14 +284,51 @@ export class SalesService {
       }
 
       // 5. Generate & Post Accounting Journal Entry
-      const arAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '1300' } }) // Accounts Receivable
-      const revAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '4100' } }) // Sales Revenue
-      const taxAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2200' } }) // Sales Tax Payable
-      const cogsAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '5100' } }) // COGS
-      const invAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '1400' } }) // Inventory
+      // Ensure the business has standard Chart of Accounts seeded
+      await AccountingService.ensureStandardChartOfAccounts(businessId, tx)
 
+      // Resolve Revenue Account (4100 or any active revenue account)
+      let revAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '4100' } })
       if (!revAccount) {
-        throw new AccountingError('System Chart of Accounts (4100 Revenue) must exist.')
+        revAccount = await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'revenue', isHeader: false },
+          orderBy: { code: 'asc' },
+        })
+      }
+      if (!revAccount) {
+        revAccount = await tx.chartOfAccount.create({
+          data: {
+            businessId,
+            code: '4100',
+            name: 'Sales Revenue',
+            type: 'revenue',
+            normalBalance: 'credit',
+            isSystem: true,
+            sortOrder: 410,
+          },
+        })
+      }
+
+      // Resolve Accounts Receivable (1300 or any AR asset account)
+      let arAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '1300' } })
+      if (!arAccount) {
+        arAccount = await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'asset', isHeader: false, code: { startsWith: '13' } },
+          orderBy: { code: 'asc' },
+        })
+      }
+      if (!arAccount) {
+        arAccount = await tx.chartOfAccount.create({
+          data: {
+            businessId,
+            code: '1300',
+            name: 'Accounts Receivable',
+            type: 'asset',
+            normalBalance: 'debit',
+            isSystem: true,
+            sortOrder: 130,
+          },
+        })
       }
 
       // Determine Debit GL Account: Cash or AR
@@ -317,13 +354,94 @@ export class SalesService {
             orderBy: { code: 'asc' },
           })
         }
+        if (!debitGlAccount) {
+          debitGlAccount = await tx.chartOfAccount.findFirst({
+            where: { businessId, type: 'asset', isHeader: false, code: { startsWith: '11' } },
+            orderBy: { code: 'asc' },
+          })
+        }
+        if (!debitGlAccount) {
+          debitGlAccount = await tx.chartOfAccount.create({
+            data: {
+              businessId,
+              code: '1110',
+              name: 'Main Operating Cash',
+              type: 'asset',
+              normalBalance: 'debit',
+              isSystem: true,
+              sortOrder: 111,
+            },
+          })
+        }
       }
 
       if (!debitGlAccount) {
-        if (!arAccount) {
-          throw new AccountingError('System Chart of Accounts (1300 AR or 1110 Cash) must exist.')
-        }
         debitGlAccount = arAccount
+      }
+
+      // Resolve Tax Account (2200 or any tax liability)
+      let taxAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2200' } })
+      if (!taxAccount && taxAmountTotal.gt(0)) {
+        taxAccount = await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'liability', isHeader: false, code: { startsWith: '22' } },
+          orderBy: { code: 'asc' },
+        })
+        if (!taxAccount) {
+          taxAccount = await tx.chartOfAccount.create({
+            data: {
+              businessId,
+              code: '2200',
+              name: 'Tax Payable',
+              type: 'liability',
+              normalBalance: 'credit',
+              isSystem: true,
+              sortOrder: 220,
+            },
+          })
+        }
+      }
+
+      // Resolve COGS & Inventory accounts if physical items moved
+      let cogsAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '5100' } })
+      if (!cogsAccount && totalCogs.gt(0)) {
+        cogsAccount = await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'expense', isHeader: false, code: { startsWith: '51' } },
+          orderBy: { code: 'asc' },
+        })
+        if (!cogsAccount) {
+          cogsAccount = await tx.chartOfAccount.create({
+            data: {
+              businessId,
+              code: '5100',
+              name: 'Cost of Goods Sold',
+              type: 'expense',
+              normalBalance: 'debit',
+              isSystem: true,
+              sortOrder: 510,
+            },
+          })
+        }
+      }
+
+      let invAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '1400' } })
+      if (!invAccount && totalCogs.gt(0)) {
+        invAccount = await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'asset', isHeader: false, code: { startsWith: '14' } },
+          orderBy: { code: 'asc' },
+        })
+        if (!invAccount) {
+          invAccount = await tx.chartOfAccount.create({
+            data: {
+              businessId,
+              code: '1400',
+              name: 'Inventory',
+              type: 'asset',
+              normalBalance: 'debit',
+              isSystem: true,
+              sortOrder: 140,
+            },
+          })
+        }
       }
 
       const journalLines: any[] = [
@@ -354,17 +472,7 @@ export class SalesService {
       }
 
       // COGS & Inventory entry for physical items
-      // If inventory stock was moved (totalCogs > 0) but the GL accounts are missing,
-      // we MUST throw an error — silent skipping causes the ledger to diverge from stock movements.
-      if (totalCogs.gt(0)) {
-        if (!cogsAccount || !invAccount) {
-          throw new AccountingError(
-            `Cannot post Sales Invoice ${sale.invoiceNumber}: ` +
-            `Chart of Accounts must include COGS (code 5100) and Inventory (code 1400) ` +
-            `to record the cost of goods sold for physical products. ` +
-            `Please create these accounts in your Chart of Accounts before posting invoices with physical products.`
-          )
-        }
+      if (totalCogs.gt(0) && cogsAccount && invAccount) {
         journalLines.push({
           accountId: cogsAccount.id,
           description: `COGS for Invoice ${sale.invoiceNumber}`,
