@@ -14,6 +14,7 @@ import {
   Layers,
   ArrowLeft,
   TrendingUp,
+  Crown,
 } from 'lucide-react'
 
 export const metadata = {
@@ -68,6 +69,28 @@ export default function PlatformAdminLayout({
 
         {/* Navigation */}
         <nav style={{ display: 'flex', flexDirection: 'column', gap: '0.375rem', flex: 1 }}>
+          {/* ⚡ Super Admins — top priority link */}
+          <Link
+            href="/admin/super-admins"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.75rem',
+              padding: '0.75rem 0.875rem',
+              borderRadius: 8,
+              color: '#fbbf24',
+              textDecoration: 'none',
+              fontSize: '0.875rem',
+              fontWeight: 700,
+              background: 'rgba(245,158,11,0.08)',
+              border: '1px solid rgba(245,158,11,0.15)',
+              marginBottom: '0.375rem',
+            }}
+          >
+            <Crown size={18} color="#f59e0b" />
+            Super Admins
+          </Link>
+
           <Link
             href="/admin"
             style={{

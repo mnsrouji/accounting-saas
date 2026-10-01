@@ -208,6 +208,8 @@ model User {
   preferredLanguage String       @default("en") @map("preferred_language")
   timezone          String       @default("UTC")
   status            UserStatus   @default(active)
+  isSuperAdmin      Boolean      @default(false) @map("is_super_admin")
+  superAdminNote    String?      @map("super_admin_note")  // Reason/label for this super admin account
   createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt         DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
 

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import type { PermissionLevel } from '@/lib/services/rbac-service'
+import { prisma } from '@/lib/db/prisma'
 
 /**
  * Get the currently authenticated user from the server.
@@ -43,7 +44,19 @@ export async function requireBusinessAccess(
 ) {
   const user = await requireUser()
 
-  const { prisma } = await import('@/lib/db/prisma')
+  // Super Admin bypass — absolute access to all businesses
+  const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { isSuperAdmin: true } })
+  if (dbUser?.isSuperAdmin) {
+    const business = await prisma.business.findUnique({ where: { id: businessId } })
+    return {
+      userId: user.id,
+      businessId,
+      role: 'owner' as const,
+      membership: null as any,
+      business: business!,
+      isSuperAdmin: true,
+    }
+  }
 
   const membership = await prisma.businessUser.findUnique({
     where: {
@@ -92,6 +105,7 @@ export async function requireBusinessAccess(
     role: membership.role,
     membership,
     business: membership.business,
+    isSuperAdmin: false,
   }
 }
 
@@ -103,8 +117,14 @@ export async function requirePermission(
   permissionCode: string
 ) {
   const user = await requireUser()
-  const { prisma } = await import('@/lib/db/prisma')
   const { RBACService } = await import('@/lib/services/rbac-service')
+
+  // Super Admin bypass — has every permission
+  const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { isSuperAdmin: true } })
+  if (dbUser?.isSuperAdmin) {
+    const business = await prisma.business.findUnique({ where: { id: businessId } })
+    return { userId: user.id, businessId, role: 'owner' as const, membership: null as any, business: business!, isSuperAdmin: true }
+  }
 
   const membership = await prisma.businessUser.findUnique({
     where: {
@@ -144,6 +164,7 @@ export async function requirePermission(
     role: membership.role,
     membership,
     business: membership.business,
+    isSuperAdmin: false,
   }
 }
 
@@ -187,10 +208,46 @@ export function isPlatformAdmin(email?: string | null): boolean {
 }
 
 /**
+ * Check if the current user is a Super Admin (from DB flag).
+ * Super Admins have absolute authority over all businesses and users.
+ */
+export async function isSuperAdminUser(): Promise<boolean> {
+  const user = await getUser()
+  if (!user) return false
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { isSuperAdmin: true },
+  })
+  return dbUser?.isSuperAdmin === true
+}
+
+/**
+ * Require Super Admin access — throws if not a super admin.
+ */
+export async function requireSuperAdmin() {
+  const user = await requireUser()
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { isSuperAdmin: true, fullName: true, email: true },
+  })
+  if (!dbUser?.isSuperAdmin) {
+    throw new AccessDeniedError('Super Admin access required.')
+  }
+  return { ...user, fullName: dbUser.fullName, dbEmail: dbUser.email }
+}
+
+/**
  * Require platform administrator access — rejects tenant users.
+ * Super Admins automatically pass this check.
  */
 export async function requirePlatformAdmin() {
   const user = await requireUser()
+  // Super admins bypass email whitelist check
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { isSuperAdmin: true },
+  })
+  if (dbUser?.isSuperAdmin) return user
   if (!isPlatformAdmin(user.email)) {
     throw new AccessDeniedError('Platform administrator access required.')
   }
