@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAuditLog } from '@/lib/audit/create-audit-log'
+import { prisma } from '@/lib/db/prisma'
 
 // ============================================================
 // Validation Schemas
@@ -130,6 +131,22 @@ export async function loginAction(
   }
 
   if (data.user) {
+    // Ensure user exists in Prisma users table
+    try {
+      await prisma.user.upsert({
+        where: { email: data.user.email! },
+        update: {},
+        create: {
+          id: data.user.id,
+          email: data.user.email!,
+          fullName: data.user.user_metadata?.full_name || data.user.email!.split('@')[0],
+          status: 'active',
+        },
+      })
+    } catch {
+      // ignore unique constraint if already exists
+    }
+
     await createAuditLog({
       userId: data.user.id,
       action: 'login',
