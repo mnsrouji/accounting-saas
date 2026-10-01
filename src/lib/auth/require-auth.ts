@@ -214,8 +214,13 @@ export function isPlatformAdmin(email?: string | null): boolean {
 export async function isSuperAdminUser(): Promise<boolean> {
   const user = await getUser()
   if (!user) return false
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
+  const dbUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: user.id },
+        { email: { equals: user.email ?? '', mode: 'insensitive' } },
+      ],
+    },
     select: { isSuperAdmin: true },
   })
   return dbUser?.isSuperAdmin === true
@@ -226,8 +231,13 @@ export async function isSuperAdminUser(): Promise<boolean> {
  */
 export async function requireSuperAdmin() {
   const user = await requireUser()
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
+  const dbUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: user.id },
+        { email: { equals: user.email ?? '', mode: 'insensitive' } },
+      ],
+    },
     select: { isSuperAdmin: true, fullName: true, email: true },
   })
   if (!dbUser?.isSuperAdmin) {
@@ -242,9 +252,14 @@ export async function requireSuperAdmin() {
  */
 export async function requirePlatformAdmin() {
   const user = await requireUser()
-  // Super admins bypass email whitelist check
-  const dbUser = await prisma.user.findUnique({
-    where: { id: user.id },
+  // Super admins bypass email whitelist — lookup by ID OR email as fallback
+  const dbUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: user.id },
+        { email: { equals: user.email ?? '', mode: 'insensitive' } },
+      ],
+    },
     select: { isSuperAdmin: true },
   })
   if (dbUser?.isSuperAdmin) return user
