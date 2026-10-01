@@ -25,11 +25,14 @@ export const salesInvoiceLineSchema = z.object({
 
 export const postSalesInvoiceSchema = z.object({
   businessId: uuidSchema,
-  customerId: uuidSchema,
+  customerId: uuidSchema.optional().nullable(),
+  isCash: z.boolean().default(false),
+  cashAccountId: uuidSchema.optional().nullable(),
+  bankAccountId: uuidSchema.optional().nullable(),
   salesOrderId: uuidSchema.optional(),
   invoiceNumber: z.string().min(1, 'Invoice number is required'),
   invoiceDate: z.coerce.date(),
-  dueDate: z.coerce.date().optional(),
+  dueDate: z.coerce.date().optional().nullable(),
   currencyCode: z.string().length(3).default('USD'),
   exchangeRate: positiveDecimalSchema.default(1),
   warehouseId: uuidSchema.optional(),

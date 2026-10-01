@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2, ArrowLeft, CheckCircle } from 'lucide-react'
+import { Plus, Trash2, ArrowLeft, CheckCircle, Coins, Wallet, Landmark } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { useLocale } from 'next-intl'
@@ -31,12 +31,20 @@ interface Warehouse {
   code: string
 }
 
+export interface TreasuryAccountOption {
+  id: string
+  name: string
+  currencyCode: string
+  type: 'cash' | 'bank'
+}
+
 interface SalesInvoiceFormProps {
   businessId: string
   defaultCurrency: string
   customers: Customer[]
   products: Product[]
   warehouses: Warehouse[]
+  treasuryAccounts?: TreasuryAccountOption[]
 }
 
 interface LineItem {
@@ -56,6 +64,7 @@ export function SalesInvoiceForm({
   customers,
   products,
   warehouses,
+  treasuryAccounts = [],
 }: SalesInvoiceFormProps) {
   const router = useRouter()
   const locale = useLocale()
@@ -63,6 +72,8 @@ export function SalesInvoiceForm({
   const isTr = locale === 'tr'
 
   const [loading, setLoading] = useState(false)
+  const [invoiceType, setInvoiceType] = useState<'credit' | 'cash'>('credit')
+  const [selectedTreasuryId, setSelectedTreasuryId] = useState(treasuryAccounts[0]?.id || '')
 
   const [customerId, setCustomerId] = useState(customers[0]?.id || '')
   const [invoiceNumber, setInvoiceNumber] = useState(`INV-${Date.now().toString().slice(-6)}`)
@@ -147,8 +158,13 @@ export function SalesInvoiceForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!customerId) {
-      toast.error(isAr ? 'يرجى تحديد العميل' : isTr ? 'Lütfen bir müşteri seçin' : 'Please select a customer')
+    if (invoiceType === 'credit' && !customerId) {
+      toast.error(isAr ? 'يرجى تحديد العميل للفاتورة الآجلة' : isTr ? 'Lütfen vadeli fatura için bir müşteri seçin' : 'Please select a customer for credit invoice')
+      return
+    }
+
+    if (invoiceType === 'cash' && treasuryAccounts.length > 0 && !selectedTreasuryId) {
+      toast.error(isAr ? 'يرجى تحديد حساب الخزينة أو البنك لتحصيل المبلغ' : isTr ? 'Lütfen tahsilat için kasa veya banka hesabı seçin' : 'Please select a cash or bank account for settlement')
       return
     }
 
@@ -160,11 +176,17 @@ export function SalesInvoiceForm({
     setLoading(true)
 
     try {
+      const selectedTreasury = treasuryAccounts.find((t) => t.id === selectedTreasuryId)
+      const isCashSale = invoiceType === 'cash'
+
       const payload = {
-        customerId,
+        customerId: customerId || undefined,
+        isCash: isCashSale,
+        cashAccountId: isCashSale && selectedTreasury?.type === 'cash' ? selectedTreasury.id : undefined,
+        bankAccountId: isCashSale && selectedTreasury?.type === 'bank' ? selectedTreasury.id : undefined,
         invoiceNumber,
         invoiceDate: new Date(invoiceDate),
-        dueDate: dueDate ? new Date(dueDate) : undefined,
+        dueDate: isCashSale ? undefined : (dueDate ? new Date(dueDate) : undefined),
         currencyCode,
         exchangeRate: Number(exchangeRate) || 1,
         notes: notes || undefined,
@@ -185,7 +207,9 @@ export function SalesInvoiceForm({
       if (res.success) {
         toast.success(
           isAr
-            ? `تم إصدار وترحيل فاتورة المبيعات ${invoiceNumber} بنجاح!`
+            ? isCashSale
+              ? `تم إصدار الفاتورة النقدية ${invoiceNumber} وقبض المبلغ في الخزينة بنجاح!`
+              : `تم إصدار وترحيل فاتورة المبيعات ${invoiceNumber} بنجاح!`
             : isTr
             ? `Satış Faturası ${invoiceNumber} başarıyla kaydedildi!`
             : `Sales Invoice ${invoiceNumber} posted successfully!`
@@ -219,11 +243,94 @@ export function SalesInvoiceForm({
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           <button type="submit" className="btn btn-primary" disabled={loading} id="post-invoice-btn">
-            <CheckCircle size={16} />
+            {invoiceType === 'cash' ? <Coins size={16} /> : <CheckCircle size={16} />}
             {loading
               ? (isAr ? 'جاري الترحيل...' : isTr ? 'Kaydediliyor...' : 'Posting...')
+              : invoiceType === 'cash'
+              ? (isAr ? 'ترحيل وقبض الفاتورة نقدياً' : isTr ? 'Nakit Faturayı Kes' : 'Post Cash Invoice')
               : (isAr ? 'ترحيل الفاتورة' : isTr ? 'Faturayı Kes' : 'Post Invoice')}
           </button>
+        </div>
+      </div>
+
+      {/* Invoice Type Selection Banner */}
+      <div className="card" style={{ marginBottom: '1.5rem', padding: '1.25rem', border: '1px solid var(--border-color)', background: 'var(--bg-surface)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span style={{ fontSize: '0.9375rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {isAr ? 'نوع الفاتورة وطريقة السداد:' : isTr ? 'Fatura Türü ve Ödeme:' : 'Invoice Type & Settlement:'}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  fontWeight: 600,
+                  background: invoiceType === 'cash' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)',
+                  color: invoiceType === 'cash' ? '#059669' : '#2563eb',
+                }}
+              >
+                {invoiceType === 'cash'
+                  ? (isAr ? 'فاتورة نقدية مسددة فوراً' : isTr ? 'Peşin / Nakit' : 'Cash (Paid)')
+                  : (isAr ? 'فاتورة آجلة على الحساب' : isTr ? 'Vadeli / Açık Hesap' : 'Credit (AR)')}
+              </span>
+            </div>
+            <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+              {invoiceType === 'cash'
+                ? (isAr ? 'تُسجل الفاتورة كمدفوعة فوراً مع توريد المبلغ إلى الصندوق أو البنك، ولا يُحمّل العميل أي ذمم دائنة أو ديون.' : isTr ? 'Fatura anında ödenmiş olarak kaydedilir ve tutar kasaya/bankaya aktarılır.' : 'Invoice is settled immediately, depositing funds to cash/bank with zero receivable debt.')
+                : (isAr ? 'تُسجل الفاتورة كذمة مدينة مستحقة على حساب العميل حتى يتم تحصيلها وسدادها لاحقاً.' : isTr ? 'Fatura müşteri carisine borç olarak kaydedilir ve daha sonra tahsil edilir.' : 'Invoice is recorded as accounts receivable debt against customer balance.')}
+            </p>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.5rem', background: 'var(--bg-page)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+            <button
+              type="button"
+              onClick={() => {
+                setInvoiceType('credit')
+                if (!customerId && customers.length > 0) setCustomerId(customers[0].id)
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 1rem',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                transition: 'all 0.2s',
+                background: invoiceType === 'credit' ? 'var(--color-brand-500)' : 'transparent',
+                color: invoiceType === 'credit' ? '#ffffff' : 'var(--text-secondary)',
+              }}
+            >
+              <Landmark size={16} />
+              {isAr ? 'فاتورة آجلة (على الحساب)' : isTr ? 'Vadeli (Açık Hesap)' : 'Credit Invoice'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setInvoiceType('cash')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.5rem 1rem',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+                transition: 'all 0.2s',
+                background: invoiceType === 'cash' ? '#10b981' : 'transparent',
+                color: invoiceType === 'cash' ? '#ffffff' : 'var(--text-secondary)',
+              }}
+            >
+              <Coins size={16} />
+              {isAr ? 'فاتورة نقدية (مسددة فوراً)' : isTr ? 'Nakit / Peşin' : 'Cash Invoice'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -238,16 +345,25 @@ export function SalesInvoiceForm({
           </div>
           <div className="card-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
             <div>
-              <label className="form-label required">
+              <label className={`form-label ${invoiceType === 'credit' ? 'required' : ''}`}>
                 {isAr ? 'العميل' : isTr ? 'Müşteri' : 'Customer'}
+                {invoiceType === 'cash' && (
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginInlineStart: '0.375rem', fontWeight: 'normal' }}>
+                    {isAr ? '(اختياري في الفاتورة النقدية)' : isTr ? '(Nakit faturada isteğe bağlı)' : '(Optional for cash)'}
+                  </span>
+                )}
               </label>
               <select
                 className="form-control"
                 value={customerId}
                 onChange={(e) => setCustomerId(e.target.value)}
-                required
+                required={invoiceType === 'credit'}
               >
-                <option value="">{isAr ? '-- اختر العميل --' : isTr ? '-- Müşteri Seçin --' : '-- Select Customer --'}</option>
+                {invoiceType === 'cash' ? (
+                  <option value="">{isAr ? '-- عميل نقدي عام (زبون صالة) --' : isTr ? '-- Perakende Müşteri --' : '-- Walk-in Cash Customer --'}</option>
+                ) : (
+                  <option value="">{isAr ? '-- اختر العميل --' : isTr ? '-- Müşteri Seçin --' : '-- Select Customer --'}</option>
+                )}
                 {customers.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name} ({c.currency})
@@ -259,7 +375,7 @@ export function SalesInvoiceForm({
                 if (!sel) return null
                 const bal = Number(sel.balance || 0)
                 const lim = sel.creditLimit ? Number(sel.creditLimit) : null
-                const isOver = lim !== null && (bal + grandTotal > lim)
+                const isOver = invoiceType === 'credit' && lim !== null && (bal + grandTotal > lim)
                 return (
                   <div style={{ marginTop: '0.375rem', fontSize: '0.75rem', color: isOver ? '#ef4444' : '#64748b', fontWeight: isOver ? 600 : 400 }}>
                     {isAr ? 'الرصيد الحالي: ' : isTr ? 'Mevcut Bakiye: ' : 'Current Bal: '}{formatCurrency(bal, sel.currency)} {lim !== null ? `| ${isAr ? 'الحد الائتماني: ' : isTr ? 'Kredi Limiti: ' : 'Limit: '}${formatCurrency(lim, sel.currency)}` : ''}
@@ -268,6 +384,49 @@ export function SalesInvoiceForm({
                 )
               })()}
             </div>
+
+            {/* Treasury Selector when Cash, or Due Date when Credit */}
+            {invoiceType === 'cash' ? (
+              <div>
+                <label className="form-label required">
+                  {isAr ? 'الصندوق / الحساب البنكي المستلم' : isTr ? 'Tahsilat Kasası / Banka' : 'Destination Treasury / Account'}
+                </label>
+                {treasuryAccounts.length > 0 ? (
+                  <select
+                    className="form-control"
+                    value={selectedTreasuryId}
+                    onChange={(e) => setSelectedTreasuryId(e.target.value)}
+                    required
+                  >
+                    {treasuryAccounts.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.type === 'cash' ? '💵 ' : '🏦 '}
+                        {t.name} ({t.currencyCode})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div style={{ padding: '0.5rem', background: 'var(--bg-page)', borderRadius: '6px', fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                    {isAr ? 'صندوق النقدية العام (النظام)' : 'General System Cash Account'}
+                  </div>
+                )}
+                <span style={{ fontSize: '0.75rem', color: '#10b981', marginTop: '4px', display: 'block', fontWeight: 500 }}>
+                  {isAr ? '✓ سيتم توريد وقبض إجمالي الفاتورة في هذا الحساب فوراً' : '✓ Total amount will be deposited into this account immediately'}
+                </span>
+              </div>
+            ) : (
+              <div>
+                <label className="form-label">
+                  {isAr ? 'تاريخ الاستحقاق' : isTr ? 'Vade Tarihi' : 'Due Date'}
+                </label>
+                <input
+                  type="date"
+                  className="form-control"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </div>
+            )}
 
             <div>
               <label className="form-label required">
@@ -292,18 +451,6 @@ export function SalesInvoiceForm({
                 value={invoiceDate}
                 onChange={(e) => setInvoiceDate(e.target.value)}
                 required
-              />
-            </div>
-
-            <div>
-              <label className="form-label">
-                {isAr ? 'تاريخ الاستحقاق' : isTr ? 'Vade Tarihi' : 'Due Date'}
-              </label>
-              <input
-                type="date"
-                className="form-control"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
               />
             </div>
           </div>
@@ -529,7 +676,7 @@ export function SalesInvoiceForm({
 
         {/* Calculation Summary Footer */}
         <div style={{ padding: '1.25rem', background: 'var(--bg-page)', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: isAr ? 'flex-start' : 'flex-end' }}>
-          <div style={{ width: 320, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <div style={{ width: 340, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
               <span>{isAr ? 'المجموع الفرعي:' : isTr ? 'Ara Toplam:' : 'Subtotal:'}</span>
               <span>{formatCurrency(subtotal, currencyCode)}</span>
@@ -552,6 +699,23 @@ export function SalesInvoiceForm({
               <span>{isAr ? 'المبلغ الإجمالي:' : isTr ? 'Genel Toplam:' : 'Total Amount:'}</span>
               <span style={{ color: 'var(--color-brand-500)' }}>{formatCurrency(grandTotal, currencyCode)}</span>
             </div>
+
+            {invoiceType === 'cash' && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#10b981', fontWeight: 600, borderTop: '1px dashed var(--border-color)', paddingTop: '0.5rem', marginTop: '0.25rem' }}>
+                  <span>{isAr ? 'المسدد نقداً فوراً:' : isTr ? 'Peşin Ödenen:' : 'Paid in Cash:'}</span>
+                  <span>{formatCurrency(grandTotal, currencyCode)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.875rem', color: '#10b981', fontWeight: 600 }}>
+                  <span>{isAr ? 'المتبقي على العميل:' : isTr ? 'Kalan Bakiye:' : 'Balance Due:'}</span>
+                  <span>{formatCurrency(0, currencyCode)}</span>
+                </div>
+                <div style={{ marginTop: '0.5rem', padding: '0.5rem 0.75rem', background: 'rgba(16, 185, 129, 0.1)', borderRadius: '6px', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#065f46', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <CheckCircle size={15} style={{ flexShrink: 0, color: '#10b981' }} />
+                  <span>{isAr ? 'فاتورة نقدية مسددة بالكامل - سيتم توريد المبلغ للخزينة مباشرة' : 'Fully paid cash invoice - will be deposited to treasury immediately'}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

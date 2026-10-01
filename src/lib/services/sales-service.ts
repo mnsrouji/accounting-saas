@@ -30,6 +30,9 @@ export class SalesService {
       const {
         businessId,
         customerId,
+        isCash = false,
+        cashAccountId,
+        bankAccountId,
         salesOrderId,
         invoiceNumber,
         invoiceDate,
@@ -45,11 +48,16 @@ export class SalesService {
 
       const rate = new Decimal(exchangeRate)
 
-      // 1. Verify Customer & Tenant
-      const customer = await tx.customer.findFirst({
-        where: { id: customerId, businessId },
-      })
-      if (!customer) throw new TenantAccessDeniedError('Customer')
+      // 1. Verify Customer & Tenant if provided
+      let customer = null
+      if (customerId) {
+        customer = await tx.customer.findFirst({
+          where: { id: customerId, businessId },
+        })
+        if (!customer) throw new TenantAccessDeniedError('Customer')
+      } else if (!isCash) {
+        throw new AccountingError('Customer is required for credit sales invoices.')
+      }
 
       // 2. Process Line Items & Costs
       let subtotal = new Decimal(0)
@@ -134,23 +142,24 @@ export class SalesService {
       const baseTotalAmount = totalAmount.mul(rate)
 
       // 3. Create Sale (Invoice)
+      const isPaidCash = Boolean(isCash)
       const sale = await tx.sale.create({
         data: {
           businessId,
-          customerId,
+          customerId: customerId || null,
           salesOrderId,
           invoiceNumber,
           invoiceDate,
-          dueDate,
-          status: 'sent', // Posted/Sent
+          dueDate: isPaidCash ? invoiceDate : dueDate,
+          status: isPaidCash ? 'paid' : 'sent',
           currencyCode,
           exchangeRate: rate,
           subtotal,
           discountAmount: new Decimal(0),
           taxAmount: taxAmountTotal,
           totalAmount,
-          paidAmount: new Decimal(0),
-          balanceDue: totalAmount,
+          paidAmount: isPaidCash ? totalAmount : new Decimal(0),
+          balanceDue: isPaidCash ? new Decimal(0) : totalAmount,
           baseSubtotal,
           baseTaxAmount,
           baseTotalAmount,
@@ -166,15 +175,94 @@ export class SalesService {
         include: { items: true },
       })
 
-      // Update Customer cached balance
-      if (customerId) {
-        const customer = await tx.customer.findFirst({ where: { id: customerId, businessId } })
-        if (customer) {
+      // Update Customer cached balance only if not cash invoice
+      if (customerId && !isPaidCash) {
+        const cust = await tx.customer.findFirst({ where: { id: customerId, businessId } })
+        if (cust) {
           await tx.customer.update({
             where: { id: customerId },
-            data: { balance: new Decimal(customer.balance).plus(totalAmount) },
+            data: { balance: new Decimal(cust.balance).plus(totalAmount) },
           })
         }
+      }
+
+      // If Cash sale: update treasury balance & create payment receipt record
+      if (isPaidCash) {
+        if (cashAccountId) {
+          const cashAcc = await tx.cashAccount.findFirst({ where: { id: cashAccountId, businessId } })
+          if (cashAcc) {
+            const nextBal = new Decimal(cashAcc.balance).plus(totalAmount)
+            await tx.cashAccount.update({
+              where: { id: cashAccountId },
+              data: { balance: nextBal },
+            })
+            await tx.cashTransaction.create({
+              data: {
+                cashAccountId,
+                businessId,
+                type: 'deposit',
+                amount: totalAmount,
+                balanceAfter: nextBal,
+                description: `Cash Sale Invoice ${sale.invoiceNumber}${customer ? ` - ${customer.name}` : ''}`,
+                reference: sale.invoiceNumber,
+                sourceType: 'sale',
+                sourceId: sale.id,
+                transactionDate: invoiceDate,
+              },
+            })
+          }
+        } else if (bankAccountId) {
+          const bankAcc = await tx.bankAccount.findFirst({ where: { id: bankAccountId, businessId } })
+          if (bankAcc) {
+            const nextBal = new Decimal(bankAcc.balance).plus(totalAmount)
+            await tx.bankAccount.update({
+              where: { id: bankAccountId },
+              data: { balance: nextBal },
+            })
+            await tx.bankTransaction.create({
+              data: {
+                bankAccountId,
+                type: 'deposit',
+                amount: totalAmount,
+                balanceAfter: nextBal,
+                description: `Bank Sale Invoice ${sale.invoiceNumber}${customer ? ` - ${customer.name}` : ''}`,
+                reference: sale.invoiceNumber,
+                transactionDate: invoiceDate,
+              },
+            })
+          }
+        }
+
+        // Create Payment record for immediate settlement
+        let paymentNumber = `PAY-${Date.now().toString().slice(-6)}`
+        try {
+          paymentNumber = await DocumentNumberingService.generateNumber(businessId, 'payment', tx)
+        } catch {}
+
+        await tx.payment.create({
+          data: {
+            businessId,
+            paymentNumber,
+            paymentDate: invoiceDate,
+            type: 'incoming',
+            direction: 'inbound',
+            status: 'posted',
+            method: bankAccountId ? 'bank_transfer' : 'cash',
+            saleId: sale.id,
+            customerId: customerId || null,
+            cashAccountId: cashAccountId || null,
+            bankAccountId: bankAccountId || null,
+            currencyCode,
+            exchangeRate: rate,
+            amount: totalAmount,
+            baseAmount: baseTotalAmount,
+            allocatedAmount: totalAmount,
+            unallocatedAmount: new Decimal(0),
+            reference: sale.invoiceNumber,
+            notes: `Auto settlement for Cash Invoice ${sale.invoiceNumber}`,
+            createdBy: userId,
+          },
+        })
       }
 
       // 4. Create Inventory Movements
@@ -202,17 +290,51 @@ export class SalesService {
       const cogsAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '5100' } }) // COGS
       const invAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '1400' } }) // Inventory
 
-      if (!arAccount || !revAccount) {
-        throw new AccountingError('System Chart of Accounts (1300 AR, 4100 Revenue) must exist.')
+      if (!revAccount) {
+        throw new AccountingError('System Chart of Accounts (4100 Revenue) must exist.')
+      }
+
+      // Determine Debit GL Account: Cash or AR
+      let debitGlAccount = null
+      if (isPaidCash) {
+        if (cashAccountId) {
+          const cashAcc = await tx.cashAccount.findFirst({ where: { id: cashAccountId, businessId } })
+          if (cashAcc?.accountId) {
+            debitGlAccount = await tx.chartOfAccount.findFirst({ where: { id: cashAcc.accountId, businessId } })
+          }
+        } else if (bankAccountId) {
+          const bankAcc = await tx.bankAccount.findFirst({ where: { id: bankAccountId, businessId } })
+          if (bankAcc?.accountId) {
+            debitGlAccount = await tx.chartOfAccount.findFirst({ where: { id: bankAcc.accountId, businessId } })
+          }
+        }
+        if (!debitGlAccount) {
+          debitGlAccount = await tx.chartOfAccount.findFirst({
+            where: {
+              businessId,
+              code: { in: ['1110', '1100', '1210', '1200'] },
+            },
+            orderBy: { code: 'asc' },
+          })
+        }
+      }
+
+      if (!debitGlAccount) {
+        if (!arAccount) {
+          throw new AccountingError('System Chart of Accounts (1300 AR or 1110 Cash) must exist.')
+        }
+        debitGlAccount = arAccount
       }
 
       const journalLines: any[] = [
         {
-          accountId: arAccount.id,
-          description: `Sales Invoice ${sale.invoiceNumber} - ${customer.name}`,
+          accountId: debitGlAccount.id,
+          description: isPaidCash
+            ? `Cash Sale ${sale.invoiceNumber}${customer ? ` - ${customer.name}` : ''}`
+            : `Sales Invoice ${sale.invoiceNumber}${customer ? ` - ${customer.name}` : ''}`,
           debitAmount: totalAmount.toNumber(),
           creditAmount: 0,
-          customerId,
+          customerId: customerId || undefined,
         },
         {
           accountId: revAccount.id,

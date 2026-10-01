@@ -89,7 +89,21 @@ export function SalesListClient({ businessId, sales }: SalesListClientProps) {
       header: t.customer,
       sortable: true,
       sortValue: (r) => r.customerName,
-      accessor: (r) => r.customerName,
+      accessor: (r) => {
+        if (!r.customerName || r.customerName === 'Walk-in Customer' || r.customerName === 'عميل نقدي عام') {
+          return (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+              <span style={{ fontSize: '0.75rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(16, 185, 129, 0.12)', color: '#059669', fontWeight: 600 }}>
+                {isAr ? 'نقدي' : isTr ? 'Nakit' : 'Cash'}
+              </span>
+              <span style={{ color: 'var(--text-secondary)' }}>
+                {isAr ? 'عميل نقدي عام' : isTr ? 'Perakende Müşteri' : 'Walk-in Customer'}
+              </span>
+            </span>
+          )
+        }
+        return r.customerName
+      },
     },
     {
       key: 'invoiceDate',
