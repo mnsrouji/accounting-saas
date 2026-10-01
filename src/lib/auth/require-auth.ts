@@ -44,12 +44,22 @@ export async function requireBusinessAccess(
 ) {
   const user = await requireUser()
 
+  // Find DB user by ID or Email
+  const dbUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: user.id },
+        { email: { equals: user.email ?? '', mode: 'insensitive' } },
+      ],
+    },
+    select: { id: true, isSuperAdmin: true },
+  })
+
   // Super Admin bypass — absolute access to all businesses
-  const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { isSuperAdmin: true } })
   if (dbUser?.isSuperAdmin) {
     const business = await prisma.business.findUnique({ where: { id: businessId } })
     return {
-      userId: user.id,
+      userId: dbUser.id,
       businessId,
       role: 'owner' as const,
       membership: null as any,
@@ -58,12 +68,10 @@ export async function requireBusinessAccess(
     }
   }
 
-  const membership = await prisma.businessUser.findUnique({
+  const membership = await prisma.businessUser.findFirst({
     where: {
-      userId_businessId: {
-        userId: user.id,
-        businessId,
-      },
+      userId: dbUser?.id ?? user.id,
+      businessId,
     },
     include: {
       business: true,
@@ -100,7 +108,7 @@ export async function requireBusinessAccess(
   }
 
   return {
-    userId: user.id,
+    userId: dbUser?.id ?? user.id,
     businessId,
     role: membership.role,
     membership,
@@ -119,19 +127,27 @@ export async function requirePermission(
   const user = await requireUser()
   const { RBACService } = await import('@/lib/services/rbac-service')
 
+  // Find DB user
+  const dbUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: user.id },
+        { email: { equals: user.email ?? '', mode: 'insensitive' } },
+      ],
+    },
+    select: { id: true, isSuperAdmin: true },
+  })
+
   // Super Admin bypass — has every permission
-  const dbUser = await prisma.user.findUnique({ where: { id: user.id }, select: { isSuperAdmin: true } })
   if (dbUser?.isSuperAdmin) {
     const business = await prisma.business.findUnique({ where: { id: businessId } })
-    return { userId: user.id, businessId, role: 'owner' as const, membership: null as any, business: business!, isSuperAdmin: true }
+    return { userId: dbUser.id, businessId, role: 'owner' as const, membership: null as any, business: business!, isSuperAdmin: true }
   }
 
-  const membership = await prisma.businessUser.findUnique({
+  const membership = await prisma.businessUser.findFirst({
     where: {
-      userId_businessId: {
-        userId: user.id,
-        businessId,
-      },
+      userId: dbUser?.id ?? user.id,
+      businessId,
     },
     include: {
       business: true,

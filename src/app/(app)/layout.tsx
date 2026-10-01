@@ -12,10 +12,20 @@ interface AppLayoutProps {
 export default async function AppLayout({ children }: AppLayoutProps) {
   const user = await requireUser()
 
+  // Find DB user by ID or Email
+  const dbUser = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: user.id },
+        { email: { equals: user.email ?? '', mode: 'insensitive' } },
+      ],
+    },
+  })
+
   // Get all businesses user has access to
   const memberships = await prisma.businessUser.findMany({
     where: {
-      userId: user.id,
+      userId: dbUser?.id ?? user.id,
       status: 'active',
     },
     include: {
@@ -26,14 +36,17 @@ export default async function AppLayout({ children }: AppLayoutProps) {
     },
   })
 
-  // If user has no businesses, redirect to onboarding
+  // If user has no businesses, check if super admin before redirecting to onboarding
   if (memberships.length === 0) {
+    if (dbUser?.isSuperAdmin) {
+      redirect('/admin/super-admins')
+    }
     redirect('/onboarding')
   }
 
   return (
     <AppShell>
-      <Sidebar memberships={memberships} userId={user.id} />
+      <Sidebar memberships={memberships} userId={dbUser?.id ?? user.id} />
       <div className="main-content">
         <Header user={user} memberships={memberships} />
         <main className="page-content">
