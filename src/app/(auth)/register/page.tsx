@@ -2,9 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import { registerAction } from '@/actions/auth/auth-actions'
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
 
 export default function RegisterPage() {
+  const t = useTranslations('auth')
+  const tApp = useTranslations('app')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -23,15 +27,19 @@ export default function RegisterPage() {
 
   return (
     <main className="auth-page">
+      <div className="auth-page-header">
+        <LanguageSwitcher />
+      </div>
+
       <div className="auth-card animate-fade-in">
         {/* Logo */}
         <div className="auth-logo">
           <div className="auth-logo-mark">A</div>
-          <span className="auth-logo-name">AccountFlow</span>
+          <span className="auth-logo-name">{tApp('name')}</span>
         </div>
 
-        <h1 className="auth-title">Create your account</h1>
-        <p className="auth-subtitle">Start managing your business finances today — free</p>
+        <h1 className="auth-title">{t('register')}</h1>
+        <p className="auth-subtitle">{tApp('tagline')}</p>
 
         {/* Error */}
         {error && (
@@ -46,7 +54,7 @@ export default function RegisterPage() {
         {/* Form */}
         <form className="auth-form" onSubmit={handleSubmit} noValidate>
           <div className="form-group">
-            <label className="auth-label" htmlFor="fullName">Full Name</label>
+            <label className="auth-label" htmlFor="fullName">{t('full_name')}</label>
             <input
               id="fullName"
               name="fullName"
@@ -60,7 +68,7 @@ export default function RegisterPage() {
           </div>
 
           <div className="form-group">
-            <label className="auth-label" htmlFor="email">Email Address</label>
+            <label className="auth-label" htmlFor="email">{t('email')}</label>
             <input
               id="email"
               name="email"
@@ -73,13 +81,13 @@ export default function RegisterPage() {
           </div>
 
           <div className="form-group">
-            <label className="auth-label" htmlFor="password">Password</label>
+            <label className="auth-label" htmlFor="password">{t('password')}</label>
             <input
               id="password"
               name="password"
               type="password"
               className="auth-input"
-              placeholder="Min. 8 characters with uppercase & number"
+              placeholder="Min. 8 characters"
               required
               autoComplete="new-password"
             />
@@ -92,22 +100,16 @@ export default function RegisterPage() {
             disabled={isPending}
             style={{ marginTop: '0.5rem' }}
           >
-            {isPending ? 'Creating account...' : 'Create Free Account'}
+            {isPending ? '...' : t('register')}
           </button>
         </form>
 
-        {/* Trust signals */}
-        <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {['✓ No credit card required', '✓ Free to start', '✓ Secure'].map((item) => (
-            <span key={item} style={{ fontSize: '0.8rem', color: '#64748b' }}>{item}</span>
-          ))}
-        </div>
-
         <div className="auth-footer">
-          Already have an account?{' '}
-          <Link href="/login">Sign in</Link>
+          {t('have_account')}{' '}
+          <Link href="/login">{t('login')}</Link>
         </div>
       </div>
     </main>
   )
 }
+

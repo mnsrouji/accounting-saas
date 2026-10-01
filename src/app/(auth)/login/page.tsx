@@ -2,9 +2,13 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { useTranslations } from 'next-intl'
 import { loginAction } from '@/actions/auth/auth-actions'
+import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
 
 export default function LoginPage() {
+  const t = useTranslations('auth')
+  const tApp = useTranslations('app')
   const [error, setError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
@@ -23,15 +27,19 @@ export default function LoginPage() {
 
   return (
     <main className="auth-page">
+      <div className="auth-page-header">
+        <LanguageSwitcher />
+      </div>
+
       <div className="auth-card animate-fade-in">
         {/* Logo */}
         <div className="auth-logo">
           <div className="auth-logo-mark">A</div>
-          <span className="auth-logo-name">AccountFlow</span>
+          <span className="auth-logo-name">{tApp('name')}</span>
         </div>
 
-        <h1 className="auth-title">Welcome back</h1>
-        <p className="auth-subtitle">Sign in to your account to continue</p>
+        <h1 className="auth-title">{t('login')}</h1>
+        <p className="auth-subtitle">{tApp('tagline')}</p>
 
         {/* Error */}
         {error && (
@@ -46,7 +54,7 @@ export default function LoginPage() {
         {/* Form */}
         <form className="auth-form" onSubmit={handleSubmit} noValidate>
           <div className="form-group">
-            <label className="auth-label" htmlFor="email">Email Address</label>
+            <label className="auth-label" htmlFor="email">{t('email')}</label>
             <input
               id="email"
               name="email"
@@ -61,12 +69,12 @@ export default function LoginPage() {
 
           <div className="form-group">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label className="auth-label" htmlFor="password">Password</label>
+              <label className="auth-label" htmlFor="password">{t('password')}</label>
               <Link
                 href="/forgot-password"
-                style={{ fontSize: '0.8125rem', color: '#818cf8', textDecoration: 'none' }}
+                style={{ fontSize: '0.8125rem', color: '#6366f1', textDecoration: 'none', fontWeight: 500 }}
               >
-                Forgot password?
+                {t('forgot_password')}
               </Link>
             </div>
             <input
@@ -87,15 +95,16 @@ export default function LoginPage() {
             disabled={isPending}
             style={{ marginTop: '0.5rem' }}
           >
-            {isPending ? 'Signing in...' : 'Sign In'}
+            {isPending ? '...' : t('login')}
           </button>
         </form>
 
         <div className="auth-footer">
-          Don&apos;t have an account?{' '}
-          <Link href="/register">Create one for free</Link>
+          {t('no_account')}{' '}
+          <Link href="/register">{t('sign_up_free')}</Link>
         </div>
       </div>
     </main>
   )
 }
+
