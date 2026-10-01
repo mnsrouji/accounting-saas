@@ -291,3 +291,161 @@ export async function superAdminUpdateUserStatusAction(
     return { success: false as const, error: err.message || 'Failed to update user status' }
   }
 }
+
+// ─────────────────────────────────────────────────────────────
+// Permanently delete a user (super admin only)
+// ─────────────────────────────────────────────────────────────
+
+export async function superAdminDeleteUserAction(targetUserId: string) {
+  try {
+    const actor = await requireSuperAdmin()
+
+    if (actor.id === targetUserId) {
+      return { success: false as const, error: 'You cannot delete your own account.' }
+    }
+
+    const target = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { email: true, fullName: true },
+    })
+    if (!target) return { success: false as const, error: 'User not found.' }
+
+    // Remove memberships first, then user
+    await prisma.businessUser.deleteMany({ where: { userId: targetUserId } })
+    await prisma.notification.deleteMany({ where: { userId: targetUserId } })
+    await prisma.user.delete({ where: { id: targetUserId } })
+
+    await createAuditLog({
+      userId: actor.id,
+      action: 'delete',
+      module: 'super_admin',
+      recordType: 'user',
+      recordId: targetUserId,
+      newValues: { deleted: target.email },
+    })
+
+    revalidatePath('/admin/super-admins')
+    return { success: true as const }
+  } catch (err: any) {
+    return { success: false as const, error: err.message || 'Failed to delete user' }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Update business status (super admin power)
+// ─────────────────────────────────────────────────────────────
+
+export async function superAdminUpdateBusinessStatusAction(
+  businessId: string,
+  status: 'active' | 'suspended' | 'closed',
+  reason?: string
+) {
+  try {
+    const actor = await requireSuperAdmin()
+
+    const updated = await prisma.business.update({
+      where: { id: businessId },
+      data: { status },
+    })
+
+    await createAuditLog({
+      userId: actor.id,
+      action: 'update',
+      module: 'super_admin',
+      recordType: 'business',
+      recordId: businessId,
+      newValues: { status, reason },
+    })
+
+    revalidatePath('/admin/super-admins')
+    revalidatePath('/admin/tenants')
+    return { success: true as const, data: updated }
+  } catch (err: any) {
+    return { success: false as const, error: err.message || 'Failed to update business status' }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Permanently delete a business and all its data (super admin only)
+// ─────────────────────────────────────────────────────────────
+
+export async function superAdminDeleteBusinessAction(businessId: string) {
+  try {
+    const actor = await requireSuperAdmin()
+
+    const biz = await prisma.business.findUnique({
+      where: { id: businessId },
+      select: { name: true },
+    })
+    if (!biz) return { success: false as const, error: 'Business not found.' }
+
+    // Use raw SQL with FK triggers disabled for safe cascade deletion
+    await prisma.$executeRawUnsafe(`SET session_replication_role = replica`)
+    try {
+      const tables = [
+        `DELETE FROM journal_entry_lines WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE business_id = '${businessId}')`,
+        `DELETE FROM journal_entries WHERE business_id = '${businessId}'`,
+        `DELETE FROM sale_items WHERE sale_id IN (SELECT id FROM sales WHERE business_id = '${businessId}')`,
+        `DELETE FROM sales WHERE business_id = '${businessId}'`,
+        `DELETE FROM purchase_items WHERE purchase_id IN (SELECT id FROM purchases WHERE business_id = '${businessId}')`,
+        `DELETE FROM purchases WHERE business_id = '${businessId}'`,
+        `DELETE FROM payment_allocations WHERE payment_id IN (SELECT id FROM payments WHERE business_id = '${businessId}')`,
+        `DELETE FROM payments WHERE business_id = '${businessId}'`,
+        `DELETE FROM treasury_transfers WHERE business_id = '${businessId}'`,
+        `DELETE FROM treasury_transactions WHERE business_id = '${businessId}'`,
+        `DELETE FROM reconciliation_adjustments WHERE reconciliation_id IN (SELECT id FROM bank_reconciliations WHERE business_id = '${businessId}')`,
+        `DELETE FROM reconciliation_matches WHERE reconciliation_id IN (SELECT id FROM bank_reconciliations WHERE business_id = '${businessId}')`,
+        `DELETE FROM bank_reconciliations WHERE business_id = '${businessId}'`,
+        `DELETE FROM bank_statement_lines WHERE statement_id IN (SELECT id FROM bank_statements WHERE business_id = '${businessId}')`,
+        `DELETE FROM bank_statements WHERE business_id = '${businessId}'`,
+        `DELETE FROM bank_accounts WHERE business_id = '${businessId}'`,
+        `DELETE FROM petty_cash_counts WHERE cash_account_id IN (SELECT id FROM cash_accounts WHERE business_id = '${businessId}')`,
+        `DELETE FROM cash_accounts WHERE business_id = '${businessId}'`,
+        `DELETE FROM stock_reservations WHERE business_id = '${businessId}'`,
+        `DELETE FROM inventory_movements WHERE business_id = '${businessId}'`,
+        `DELETE FROM expenses WHERE business_id = '${businessId}'`,
+        `DELETE FROM payment_promises WHERE business_id = '${businessId}'`,
+        `DELETE FROM credit_overrides WHERE business_id = '${businessId}'`,
+        `DELETE FROM crm_activities WHERE business_id = '${businessId}'`,
+        `DELETE FROM crm_tasks WHERE business_id = '${businessId}'`,
+        `DELETE FROM sales_opportunities WHERE business_id = '${businessId}'`,
+        `DELETE FROM customers WHERE business_id = '${businessId}'`,
+        `DELETE FROM suppliers WHERE business_id = '${businessId}'`,
+        `DELETE FROM products WHERE business_id = '${businessId}'`,
+        `DELETE FROM warehouses WHERE business_id = '${businessId}'`,
+        `DELETE FROM sales_orders WHERE business_id = '${businessId}'`,
+        `DELETE FROM purchase_orders WHERE business_id = '${businessId}'`,
+        `DELETE FROM chart_of_accounts WHERE business_id = '${businessId}'`,
+        `DELETE FROM tax_rates WHERE business_id = '${businessId}'`,
+        `DELETE FROM audit_logs WHERE business_id = '${businessId}'`,
+        `DELETE FROM notifications WHERE business_id = '${businessId}'`,
+        `DELETE FROM role_permissions WHERE role_id IN (SELECT id FROM roles WHERE business_id = '${businessId}')`,
+        `DELETE FROM roles WHERE business_id = '${businessId}'`,
+        `DELETE FROM business_users WHERE business_id = '${businessId}'`,
+        `DELETE FROM subscriptions WHERE business_id = '${businessId}'`,
+        `DELETE FROM businesses WHERE id = '${businessId}'`,
+      ]
+      for (const sql of tables) {
+        try { await prisma.$executeRawUnsafe(sql) } catch { /* skip */ }
+      }
+    } finally {
+      await prisma.$executeRawUnsafe(`SET session_replication_role = DEFAULT`)
+    }
+
+    await createAuditLog({
+      userId: actor.id,
+      action: 'delete',
+      module: 'super_admin',
+      recordType: 'business',
+      recordId: businessId,
+      newValues: { deleted: biz.name },
+    })
+
+    revalidatePath('/admin/super-admins')
+    revalidatePath('/admin/tenants')
+    return { success: true as const }
+  } catch (err: any) {
+    return { success: false as const, error: err.message || 'Failed to delete business' }
+  }
+}
+
