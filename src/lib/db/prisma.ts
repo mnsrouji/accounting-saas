@@ -19,9 +19,8 @@ function createPrismaClient() {
 
 export const prisma = (globalForPrisma.prisma ?? createPrismaClient()) as PrismaClient & Record<string, any>
 
-// Reuse the same instance across hot reloads in development
-if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma
-}
+// Reuse instance across invocations and hot reloads
+globalForPrisma.prisma = prisma
+
 
 export default prisma

@@ -1,13 +1,14 @@
+import { cache } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import type { PermissionLevel } from '@/lib/services/rbac-service'
 import { prisma } from '@/lib/db/prisma'
 
 /**
- * Get the currently authenticated user from the server.
+ * Get the currently authenticated user from the server (memoized per request).
  * Returns null if not authenticated (does not redirect).
  */
-export async function getUser() {
+export const getUser = cache(async () => {
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
@@ -15,7 +16,21 @@ export async function getUser() {
   } catch {
     return null
   }
-}
+})
+
+/**
+ * Get DB user with per-request memoization.
+ */
+export const getDbUser = cache(async (userId: string, email?: string | null) => {
+  return prisma.user.findFirst({
+    where: {
+      OR: [
+        { id: userId },
+        { email: { equals: email ?? '', mode: 'insensitive' } },
+      ],
+    },
+  })
+})
 
 /**
  * Require authentication — redirects to login if not authenticated.
@@ -44,16 +59,8 @@ export async function requireBusinessAccess(
 ) {
   const user = await requireUser()
 
-  // Find DB user by ID or Email
-  const dbUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { id: user.id },
-        { email: { equals: user.email ?? '', mode: 'insensitive' } },
-      ],
-    },
-    select: { id: true, isSuperAdmin: true },
-  })
+  // Find DB user by ID or Email (memoized)
+  const dbUser = await getDbUser(user.id, user.email)
 
   // Super Admin bypass — absolute access to all businesses
   if (dbUser?.isSuperAdmin) {
@@ -127,16 +134,8 @@ export async function requirePermission(
   const user = await requireUser()
   const { RBACService } = await import('@/lib/services/rbac-service')
 
-  // Find DB user
-  const dbUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { id: user.id },
-        { email: { equals: user.email ?? '', mode: 'insensitive' } },
-      ],
-    },
-    select: { id: true, isSuperAdmin: true },
-  })
+  // Find DB user (memoized)
+  const dbUser = await getDbUser(user.id, user.email)
 
   // Super Admin bypass — has every permission
   if (dbUser?.isSuperAdmin) {
@@ -175,7 +174,7 @@ export async function requirePermission(
   }
 
   return {
-    userId: user.id,
+    userId: dbUser?.id ?? user.id,
     businessId,
     role: membership.role,
     membership,
@@ -230,15 +229,7 @@ export function isPlatformAdmin(email?: string | null): boolean {
 export async function isSuperAdminUser(): Promise<boolean> {
   const user = await getUser()
   if (!user) return false
-  const dbUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { id: user.id },
-        { email: { equals: user.email ?? '', mode: 'insensitive' } },
-      ],
-    },
-    select: { isSuperAdmin: true },
-  })
+  const dbUser = await getDbUser(user.id, user.email)
   return dbUser?.isSuperAdmin === true
 }
 
@@ -247,15 +238,7 @@ export async function isSuperAdminUser(): Promise<boolean> {
  */
 export async function requireSuperAdmin() {
   const user = await requireUser()
-  const dbUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { id: user.id },
-        { email: { equals: user.email ?? '', mode: 'insensitive' } },
-      ],
-    },
-    select: { isSuperAdmin: true, fullName: true, email: true },
-  })
+  const dbUser = await getDbUser(user.id, user.email)
   if (!dbUser?.isSuperAdmin) {
     throw new AccessDeniedError('Super Admin access required.')
   }
@@ -269,15 +252,7 @@ export async function requireSuperAdmin() {
 export async function requirePlatformAdmin() {
   const user = await requireUser()
   // Super admins bypass email whitelist — lookup by ID OR email as fallback
-  const dbUser = await prisma.user.findFirst({
-    where: {
-      OR: [
-        { id: user.id },
-        { email: { equals: user.email ?? '', mode: 'insensitive' } },
-      ],
-    },
-    select: { isSuperAdmin: true },
-  })
+  const dbUser = await getDbUser(user.id, user.email)
   if (dbUser?.isSuperAdmin) return user
   if (!isPlatformAdmin(user.email)) {
     throw new AccessDeniedError('Platform administrator access required.')
