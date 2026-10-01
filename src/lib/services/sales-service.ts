@@ -26,7 +26,11 @@ export class SalesService {
     // Check SaaS plan quota limit for monthly invoices
     await UsageService.assertQuota(validated.businessId, 'monthlyInvoices')
 
-    return prisma.$transaction(async (tx) => {
+    // Ensure standard Chart of Accounts exists before opening the transaction
+    await AccountingService.ensureStandardChartOfAccounts(validated.businessId)
+
+    return prisma.$transaction(
+      async (tx) => {
       const {
         businessId,
         customerId,
@@ -284,9 +288,6 @@ export class SalesService {
       }
 
       // 5. Generate & Post Accounting Journal Entry
-      // Ensure the business has standard Chart of Accounts seeded
-      await AccountingService.ensureStandardChartOfAccounts(businessId, tx)
-
       // Resolve Revenue Account (4100 or any active revenue account)
       let revAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '4100' } })
       if (!revAccount) {
@@ -505,6 +506,10 @@ export class SalesService {
       }, tx)
 
       return { sale, journalEntry }
+    },
+    {
+      timeout: 30000,
+      maxWait: 10000,
     })
   }
 }

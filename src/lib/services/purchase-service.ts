@@ -22,7 +22,11 @@ export class PurchaseService {
   static async postPurchaseInvoice(input: PostPurchaseInvoiceInput) {
     const validated = postPurchaseInvoiceSchema.parse(input)
 
-    return prisma.$transaction(async (tx) => {
+    // Ensure standard Chart of Accounts exists before opening the transaction
+    await AccountingService.ensureStandardChartOfAccounts(validated.businessId)
+
+    return prisma.$transaction(
+      async (tx) => {
       const {
         businessId,
         supplierId,
@@ -180,9 +184,6 @@ export class PurchaseService {
       }
 
       // 5. Generate & Post Accounting Journal Entry
-      // Ensure the business has standard Chart of Accounts seeded
-      await AccountingService.ensureStandardChartOfAccounts(businessId, tx)
-
       // Resolve Accounts Payable (2100 or any AP liability account)
       let apAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2100' } })
       if (!apAccount) {
@@ -294,6 +295,10 @@ export class PurchaseService {
       }, tx)
 
       return { purchase, journalEntry }
+    },
+    {
+      timeout: 30000,
+      maxWait: 10000,
     })
   }
 }
