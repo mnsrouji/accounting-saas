@@ -1,7 +1,7 @@
 'use client'
 
 // =============================================================
-// Super Admin Management Page — Client Component
+// Super Admin Management Client — Clean table layout
 // =============================================================
 
 import { useState, useTransition, useCallback } from 'react'
@@ -9,20 +9,16 @@ import {
   grantSuperAdminAction,
   revokeSuperAdminAction,
   searchUsersForSuperAdminAction,
-  superAdminUpdateUserStatusAction,
 } from '@/actions/saas/super-admin-actions'
 import {
-  ShieldCheck,
-  ShieldOff,
-  Search,
   Crown,
-  Users,
-  AlertTriangle,
-  CheckCircle,
+  Search,
+  ShieldOff,
   X,
-  UserCheck,
-  UserX,
+  AlertTriangle,
   Loader2,
+  UserPlus,
+  CheckCircle,
 } from 'lucide-react'
 
 // ─────────────────────────────────────────────────────────────
@@ -47,105 +43,21 @@ type Props = {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Toast helper
-// ─────────────────────────────────────────────────────────────
-
-function Toast({ msg, ok }: { msg: string; ok: boolean }) {
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        bottom: '2rem',
-        right: '2rem',
-        zIndex: 9999,
-        padding: '0.875rem 1.25rem',
-        borderRadius: 12,
-        background: ok ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)',
-        border: `1px solid ${ok ? '#22c55e' : '#ef4444'}`,
-        color: ok ? '#4ade80' : '#f87171',
-        fontSize: '0.875rem',
-        fontWeight: 600,
-        display: 'flex',
-        alignItems: 'center',
-        gap: '0.625rem',
-        backdropFilter: 'blur(12px)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-        animation: 'slideInRight 0.3s ease',
-      }}
-    >
-      {ok ? <CheckCircle size={16} /> : <AlertTriangle size={16} />}
-      {msg}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// Avatar initials
-// ─────────────────────────────────────────────────────────────
-
-function Avatar({ user, size = 38 }: { user: AdminUser; size?: number }) {
-  const initials = user.fullName
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2)
-
-  if (user.avatarUrl) {
-    return (
-      <img
-        src={user.avatarUrl}
-        alt={user.fullName}
-        style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-      />
-    )
-  }
-
-  const colors = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444']
-  const color = colors[user.fullName.charCodeAt(0) % colors.length]
-
-  return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: '50%',
-        background: color,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: size * 0.36,
-        fontWeight: 700,
-        color: '#fff',
-        flexShrink: 0,
-      }}
-    >
-      {initials}
-    </div>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
 // Grant Modal
 // ─────────────────────────────────────────────────────────────
 
-function GrantModal({
-  onClose,
-  onGranted,
-}: {
-  onClose: () => void
-  onGranted: (user: AdminUser) => void
-}) {
+function GrantModal({ onClose, onGranted }: { onClose: () => void; onGranted: (u: AdminUser) => void }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<AdminUser[]>([])
   const [searching, setSearching] = useState(false)
   const [selected, setSelected] = useState<AdminUser | null>(null)
   const [note, setNote] = useState('')
   const [isPending, startTransition] = useTransition()
+  const [err, setErr] = useState('')
 
   const handleSearch = useCallback(async (q: string) => {
     setQuery(q)
-    if (q.length < 2) { setResults([]); return }
+    if (q.trim().length < 2) { setResults([]); return }
     setSearching(true)
     const res = await searchUsersForSuperAdminAction(q)
     setSearching(false)
@@ -154,219 +66,117 @@ function GrantModal({
 
   const handleGrant = () => {
     if (!selected) return
+    setErr('')
     startTransition(async () => {
       const res = await grantSuperAdminAction(selected.id, note)
       if (res.success) {
-        onGranted({ ...selected, isSuperAdmin: true, superAdminNote: note })
+        onGranted({ ...selected, isSuperAdmin: true, superAdminNote: note || null })
         onClose()
+      } else {
+        setErr(res.error)
       }
     })
   }
 
   return (
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.7)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backdropFilter: 'blur(4px)',
-      }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div
-        style={{
-          background: '#111827',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 16,
-          padding: '2rem',
-          width: '100%',
-          maxWidth: 520,
-          boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <div>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
-              Grant Super Admin
-            </h2>
-            <p style={{ color: '#64748b', fontSize: '0.8125rem', marginTop: '0.25rem' }}>
-              Search for a user and grant them absolute platform-wide control
-            </p>
+      <div style={{ background: '#0d1322', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, padding: '1.75rem', width: '100%', maxWidth: 500, boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+            <Crown size={18} color="#f59e0b" />
+            <h2 style={{ color: '#f8fafc', fontSize: '1rem', fontWeight: 700, margin: 0 }}>Grant Super Admin</h2>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 4 }}>
-            <X size={20} />
-          </button>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={18} /></button>
         </div>
 
         {/* Search */}
-        <div style={{ position: 'relative', marginBottom: '1rem' }}>
-          <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+        <div style={{ position: 'relative', marginBottom: '0.875rem' }}>
+          <Search size={15} style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+          {searching && <Loader2 size={14} style={{ position: 'absolute', right: 11, top: '50%', transform: 'translateY(-50%)', color: '#6366f1', animation: 'spin 1s linear infinite' }} />}
           <input
+            autoFocus
             type="text"
             placeholder="Search by email or name..."
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
-            style={{
-              width: '100%',
-              paddingLeft: '2.5rem',
-              paddingRight: '1rem',
-              paddingTop: '0.625rem',
-              paddingBottom: '0.625rem',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 10,
-              color: '#f8fafc',
-              fontSize: '0.875rem',
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-            autoFocus
+            style={{ width: '100%', paddingLeft: '2.25rem', paddingRight: '2rem', paddingTop: '0.625rem', paddingBottom: '0.625rem', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f8fafc', fontSize: '0.8125rem', outline: 'none', boxSizing: 'border-box' }}
           />
-          {searching && <Loader2 size={14} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: '#6366f1', animation: 'spin 1s linear infinite' }} />}
         </div>
 
-        {/* Results */}
+        {/* Search results */}
         {results.length > 0 && !selected && (
-          <div style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.375rem', marginBottom: '1rem' }}>
-            {results.map((u) => (
+          <div style={{ maxHeight: 220, overflowY: 'auto', marginBottom: '0.875rem', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 8, overflow: 'hidden' }}>
+            {results.map((u, i) => (
               <button
                 key={u.id}
-                onClick={() => setSelected(u)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.75rem',
-                  padding: '0.75rem',
-                  background: 'rgba(255,255,255,0.04)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: 10,
-                  cursor: 'pointer',
-                  width: '100%',
-                  textAlign: 'left',
-                  transition: 'background 0.15s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(99,102,241,0.15)')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                onClick={() => { setSelected(u); setResults([]) }}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'transparent', border: 'none', borderBottom: i < results.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none', cursor: 'pointer', width: '100%', textAlign: 'left' }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
               >
-                <Avatar user={u} size={34} />
+                <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', flexShrink: 0 }}>
+                  {u.fullName.slice(0, 2).toUpperCase()}
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ color: '#f8fafc', fontSize: '0.875rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.fullName}</span>
-                    {u.isSuperAdmin && <Crown size={12} color="#f59e0b" />}
+                  <div style={{ color: '#f8fafc', fontSize: '0.8125rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    {u.fullName}
+                    {u.isSuperAdmin && <Crown size={11} color="#f59e0b" />}
                   </div>
                   <div style={{ color: '#64748b', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}</div>
                 </div>
-                <div style={{ color: '#475569', fontSize: '0.75rem', flexShrink: 0 }}>{u._count.businessMemberships} co.</div>
+                <div style={{ color: '#374151', fontSize: '0.75rem', flexShrink: 0 }}>{u._count.businessMemberships} co.</div>
               </button>
             ))}
           </div>
         )}
 
-        {/* Selected user */}
+        {/* Selected */}
         {selected && (
-          <div style={{ marginBottom: '1rem' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem',
-                padding: '0.875rem',
-                background: 'rgba(99,102,241,0.12)',
-                border: '1px solid rgba(99,102,241,0.3)',
-                borderRadius: 10,
-                marginBottom: '0.75rem',
-              }}
-            >
-              <Avatar user={selected} size={38} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: '#f8fafc', fontSize: '0.875rem', fontWeight: 700 }}>{selected.fullName}</div>
-                <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>{selected.email}</div>
+          <div style={{ marginBottom: '0.875rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 1rem', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 8, marginBottom: '0.75rem' }}>
+              <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#312e81', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#a5b4fc', flexShrink: 0 }}>
+                {selected.fullName.slice(0, 2).toUpperCase()}
               </div>
-              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>
-                <X size={16} />
-              </button>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#f8fafc', fontSize: '0.875rem', fontWeight: 600 }}>{selected.fullName}</div>
+                <div style={{ color: '#64748b', fontSize: '0.75rem' }}>{selected.email}</div>
+              </div>
+              <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}><X size={14} /></button>
             </div>
-
-            <label style={{ display: 'block', color: '#94a3b8', fontSize: '0.8125rem', fontWeight: 500, marginBottom: '0.375rem' }}>
-              Note / Reason (optional)
-            </label>
             <input
               type="text"
-              placeholder="e.g. System administrator, CTO..."
+              placeholder="Note / role (e.g. CTO, System Administrator)..."
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '0.625rem 0.875rem',
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 10,
-                color: '#f8fafc',
-                fontSize: '0.875rem',
-                outline: 'none',
-                boxSizing: 'border-box',
-              }}
+              style={{ width: '100%', padding: '0.625rem 0.875rem', background: '#090d16', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f8fafc', fontSize: '0.8125rem', outline: 'none', boxSizing: 'border-box' }}
             />
           </div>
         )}
 
         {/* Warning */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '0.75rem',
-            padding: '0.75rem',
-            background: 'rgba(239,68,68,0.08)',
-            border: '1px solid rgba(239,68,68,0.2)',
-            borderRadius: 10,
-            marginBottom: '1.5rem',
-          }}
-        >
-          <AlertTriangle size={16} color="#f87171" style={{ flexShrink: 0, marginTop: 2 }} />
-          <p style={{ color: '#f87171', fontSize: '0.8125rem', margin: 0, lineHeight: 1.5 }}>
-            Super Admins have <strong>absolute, unrestricted access</strong> to all companies, users, financial data, and system settings. Grant with extreme caution.
+        <div style={{ display: 'flex', gap: '0.625rem', padding: '0.75rem', background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', borderRadius: 8, marginBottom: '1.25rem' }}>
+          <AlertTriangle size={14} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
+          <p style={{ color: '#f87171', fontSize: '0.75rem', margin: 0, lineHeight: 1.5 }}>
+            Super Admins have <strong>absolute unrestricted access</strong> to all companies, users, and financial data. Grant with caution.
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '0.625rem 1.25rem',
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              borderRadius: 10,
-              color: '#94a3b8',
-              fontSize: '0.875rem',
-              cursor: 'pointer',
-              fontWeight: 500,
-            }}
-          >
-            Cancel
-          </button>
+        {err && <p style={{ color: '#f87171', fontSize: '0.8125rem', marginBottom: '0.875rem' }}>{err}</p>}
+
+        {/* Actions */}
+        <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94a3b8', fontSize: '0.8125rem', cursor: 'pointer' }}>Cancel</button>
           <button
             onClick={handleGrant}
             disabled={!selected || isPending}
-            style={{
-              padding: '0.625rem 1.5rem',
-              background: selected ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'rgba(255,255,255,0.05)',
-              border: 'none',
-              borderRadius: 10,
-              color: selected ? '#fff' : '#475569',
-              fontSize: '0.875rem',
-              cursor: selected ? 'pointer' : 'not-allowed',
-              fontWeight: 700,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}
+            style={{ padding: '0.5rem 1.25rem', background: selected ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'rgba(255,255,255,0.04)', border: 'none', borderRadius: 8, color: selected ? '#000' : '#475569', fontSize: '0.8125rem', fontWeight: 700, cursor: selected ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
           >
-            {isPending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Crown size={14} />}
-            {isPending ? 'Granting...' : 'Grant Super Admin'}
+            {isPending ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <Crown size={13} />}
+            {isPending ? 'Granting...' : 'Grant Access'}
           </button>
         </div>
       </div>
@@ -375,25 +185,24 @@ function GrantModal({
 }
 
 // ─────────────────────────────────────────────────────────────
-// Main Client Component
+// Main Component
 // ─────────────────────────────────────────────────────────────
 
 export default function SuperAdminClient({ superAdmins: initial, currentUserId }: Props) {
   const [admins, setAdmins] = useState<AdminUser[]>(initial)
   const [showModal, setShowModal] = useState(false)
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
-  const [revoking, setRevoking] = useState<string | null>(null)
   const [confirmRevoke, setConfirmRevoke] = useState<AdminUser | null>(null)
+  const [revoking, setRevoking] = useState<string | null>(null)
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
 
   const showToast = (msg: string, ok: boolean) => {
     setToast({ msg, ok })
-    setTimeout(() => setToast(null), 4000)
+    setTimeout(() => setToast(null), 3500)
   }
 
   const handleGranted = (user: AdminUser) => {
     setAdmins((prev) => {
-      const exists = prev.find((a) => a.id === user.id)
-      if (exists) return prev.map((a) => (a.id === user.id ? user : a))
+      if (prev.find((a) => a.id === user.id)) return prev.map((a) => (a.id === user.id ? user : a))
       return [...prev, user]
     })
     showToast(`${user.fullName} is now a Super Admin`, true)
@@ -406,7 +215,7 @@ export default function SuperAdminClient({ superAdmins: initial, currentUserId }
     setConfirmRevoke(null)
     if (res.success) {
       setAdmins((prev) => prev.filter((a) => a.id !== user.id))
-      showToast(`${user.fullName}'s Super Admin access has been revoked`, true)
+      showToast(`${user.fullName}'s access has been revoked`, true)
     } else {
       showToast(res.error, false)
     }
@@ -414,72 +223,35 @@ export default function SuperAdminClient({ superAdmins: initial, currentUserId }
 
   return (
     <>
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes slideInRight { from { opacity: 0; transform: translateX(2rem); } to { opacity: 1; transform: translateX(0); } }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
-      `}</style>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-      {toast && <Toast msg={toast.msg} ok={toast.ok} />}
-
-      {showModal && (
-        <GrantModal
-          onClose={() => setShowModal(false)}
-          onGranted={handleGranted}
-        />
+      {/* Toast */}
+      {toast && (
+        <div style={{ position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 9999, padding: '0.75rem 1rem', borderRadius: 10, background: toast.ok ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)', border: `1px solid ${toast.ok ? '#22c55e' : '#ef4444'}`, color: toast.ok ? '#4ade80' : '#f87171', fontSize: '0.875rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem', backdropFilter: 'blur(10px)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {toast.ok ? <CheckCircle size={15} /> : <AlertTriangle size={15} />}
+          {toast.msg}
+        </div>
       )}
 
-      {/* Confirm Revoke Dialog */}
+      {/* Grant Modal */}
+      {showModal && <GrantModal onClose={() => setShowModal(false)} onGranted={handleGranted} />}
+
+      {/* Confirm Revoke */}
       {confirmRevoke && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.7)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backdropFilter: 'blur(4px)',
-          }}
-        >
-          <div
-            style={{
-              background: '#111827',
-              border: '1px solid rgba(239,68,68,0.3)',
-              borderRadius: 16,
-              padding: '2rem',
-              width: '100%',
-              maxWidth: 420,
-              boxShadow: '0 25px 60px rgba(0,0,0,0.6)',
-              animation: 'fadeIn 0.2s ease',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem', marginBottom: '1rem' }}>
-              <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(239,68,68,0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <ShieldOff size={20} color="#ef4444" />
-              </div>
-              <div>
-                <h3 style={{ color: '#f8fafc', fontSize: '1.1rem', fontWeight: 800, margin: 0 }}>Revoke Super Admin</h3>
-                <p style={{ color: '#64748b', fontSize: '0.8125rem', margin: 0 }}>This action is logged and auditable</p>
-              </div>
-            </div>
-            <p style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, marginBottom: '1.5rem' }}>
-              Are you sure you want to revoke Super Admin access from <strong style={{ color: '#f8fafc' }}>{confirmRevoke.fullName}</strong>? They will lose all platform-level privileges immediately.
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}>
+          <div style={{ background: '#0d1322', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 14, padding: '1.75rem', maxWidth: 400, width: '100%', boxShadow: '0 24px 60px rgba(0,0,0,0.6)' }}>
+            <h3 style={{ color: '#f8fafc', fontSize: '1rem', fontWeight: 700, margin: '0 0 0.5rem' }}>Revoke Super Admin</h3>
+            <p style={{ color: '#94a3b8', fontSize: '0.875rem', lineHeight: 1.6, margin: '0 0 1.25rem' }}>
+              Remove Super Admin access from <strong style={{ color: '#f8fafc' }}>{confirmRevoke.fullName}</strong>? They will lose all platform-level privileges immediately.
             </p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setConfirmRevoke(null)}
-                style={{ padding: '0.625rem 1.25rem', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, color: '#94a3b8', fontSize: '0.875rem', cursor: 'pointer', fontWeight: 500 }}
-              >
-                Cancel
-              </button>
+            <div style={{ display: 'flex', gap: '0.625rem', justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmRevoke(null)} style={{ padding: '0.5rem 1rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#94a3b8', fontSize: '0.8125rem', cursor: 'pointer' }}>Cancel</button>
               <button
                 onClick={() => handleRevoke(confirmRevoke)}
                 disabled={revoking === confirmRevoke.id}
-                style={{ padding: '0.625rem 1.25rem', background: 'linear-gradient(135deg, #ef4444, #dc2626)', border: 'none', borderRadius: 10, color: '#fff', fontSize: '0.875rem', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                style={{ padding: '0.5rem 1rem', background: 'rgba(239,68,68,0.9)', border: 'none', borderRadius: 8, color: '#fff', fontSize: '0.8125rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               >
-                {revoking === confirmRevoke.id ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <ShieldOff size={14} />}
+                {revoking === confirmRevoke.id ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} /> : <ShieldOff size={13} />}
                 Revoke Access
               </button>
             </div>
@@ -488,228 +260,131 @@ export default function SuperAdminClient({ superAdmins: initial, currentUserId }
       )}
 
       {/* Page Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.375rem' }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: 'linear-gradient(135deg, #f59e0b, #d97706)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Crown size={18} color="#fff" />
-            </div>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f8fafc', margin: 0, letterSpacing: '-0.02em' }}>
-              Super Admins
-            </h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <Crown size={22} color="#f59e0b" />
+          <div>
+            <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: '#f8fafc', margin: 0, letterSpacing: '-0.02em' }}>Super Admins</h1>
+            <p style={{ color: '#64748b', fontSize: '0.8125rem', margin: 0 }}>
+              Accounts with absolute platform-wide authority · {admins.length} active
+            </p>
           </div>
-          <p style={{ color: '#64748b', fontSize: '0.875rem', margin: 0 }}>
-            Accounts with absolute, unrestricted platform-wide authority over all businesses, users, and data.
-          </p>
         </div>
         <button
           onClick={() => setShowModal(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            padding: '0.75rem 1.25rem',
-            background: 'linear-gradient(135deg, #f59e0b, #d97706)',
-            border: 'none',
-            borderRadius: 12,
-            color: '#000',
-            fontSize: '0.875rem',
-            fontWeight: 800,
-            cursor: 'pointer',
-            boxShadow: '0 0 24px rgba(245,158,11,0.3)',
-            letterSpacing: '0.01em',
-          }}
+          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.625rem 1.125rem', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, color: '#fbbf24', fontSize: '0.8125rem', fontWeight: 600, cursor: 'pointer' }}
         >
-          <Crown size={16} />
+          <UserPlus size={15} />
           Grant Super Admin
         </button>
       </div>
 
-      {/* Warning Banner */}
-      <div
-        style={{
-          display: 'flex',
-          gap: '1rem',
-          padding: '1rem 1.25rem',
-          background: 'rgba(245,158,11,0.07)',
-          border: '1px solid rgba(245,158,11,0.2)',
-          borderRadius: 12,
-          marginBottom: '2rem',
-        }}
-      >
-        <AlertTriangle size={20} color="#f59e0b" style={{ flexShrink: 0, marginTop: 2 }} />
-        <div>
-          <p style={{ color: '#f59e0b', fontWeight: 700, fontSize: '0.875rem', margin: '0 0 0.25rem' }}>
-            Critical Privilege Level
-          </p>
-          <p style={{ color: '#92400e', fontSize: '0.8125rem', margin: 0, lineHeight: 1.6 }}>
-            Super Admins bypass ALL business-level permission checks. They can access, modify, and delete data across every company on the platform. All privilege changes are permanently logged in the audit trail.
-          </p>
-        </div>
+      {/* Warning banner */}
+      <div style={{ display: 'flex', gap: '0.75rem', padding: '0.875rem 1rem', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 10, marginBottom: '1.5rem' }}>
+        <AlertTriangle size={16} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+        <p style={{ color: '#92400e', fontSize: '0.8125rem', margin: 0, lineHeight: 1.5 }}>
+          Super Admins bypass <strong style={{ color: '#f59e0b' }}>all</strong> business-level permission checks and can access, modify, or delete data across every company on the platform. All changes are permanently recorded in the audit trail.
+        </p>
       </div>
 
-      {/* Super Admin Cards */}
-      {admins.length === 0 ? (
-        <div
-          style={{
-            textAlign: 'center',
-            padding: '4rem 2rem',
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.06)',
-            borderRadius: 16,
-          }}
-        >
-          <Crown size={48} color="#374151" style={{ margin: '0 auto 1rem' }} />
-          <p style={{ color: '#475569', fontSize: '0.875rem' }}>No Super Admins yet. Grant access to get started.</p>
-        </div>
-      ) : (
-        <div style={{ display: 'grid', gap: '1rem' }}>
-          {admins.map((admin) => (
-            <div
-              key={admin.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '1rem',
-                padding: '1.25rem 1.5rem',
-                background: admin.id === currentUserId
-                  ? 'rgba(245,158,11,0.07)'
-                  : 'rgba(255,255,255,0.03)',
-                border: `1px solid ${admin.id === currentUserId ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.08)'}`,
-                borderRadius: 14,
-                transition: 'all 0.2s',
-              }}
-            >
-              {/* Avatar */}
-              <div style={{ position: 'relative' }}>
-                <Avatar user={admin} size={46} />
-                <div
-                  style={{
-                    position: 'absolute',
-                    bottom: -2,
-                    right: -2,
-                    width: 18,
-                    height: 18,
-                    borderRadius: '50%',
-                    background: '#f59e0b',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    border: '2px solid #090d16',
-                  }}
+      {/* Table */}
+      <div style={{ background: '#0d1322', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', color: '#64748b', textAlign: 'left' }}>
+              <th style={{ padding: '0.875rem 1rem', fontWeight: 600 }}>User</th>
+              <th style={{ padding: '0.875rem 1rem', fontWeight: 600 }}>Email</th>
+              <th style={{ padding: '0.875rem 1rem', fontWeight: 600 }}>Note</th>
+              <th style={{ padding: '0.875rem 1rem', fontWeight: 600 }}>Companies</th>
+              <th style={{ padding: '0.875rem 1rem', fontWeight: 600 }}>Status</th>
+              <th style={{ padding: '0.875rem 1rem', fontWeight: 600 }}>Since</th>
+              <th style={{ padding: '0.875rem 1rem', textAlign: 'right', fontWeight: 600 }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {admins.length === 0 ? (
+              <tr>
+                <td colSpan={7} style={{ padding: '3rem', textAlign: 'center', color: '#475569' }}>
+                  <Crown size={32} color="#1e293b" style={{ margin: '0 auto 0.75rem', display: 'block' }} />
+                  No Super Admins yet. Use the button above to grant access.
+                </td>
+              </tr>
+            ) : (
+              admins.map((admin) => (
+                <tr
+                  key={admin.id}
+                  style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
                 >
-                  <Crown size={9} color="#000" />
-                </div>
-              </div>
+                  {/* User */}
+                  <td style={{ padding: '0.875rem 1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                      <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#1e293b', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 700, color: '#94a3b8', flexShrink: 0 }}>
+                        {admin.fullName.slice(0, 2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ color: '#f8fafc', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                          {admin.fullName}
+                          {admin.id === currentUserId && (
+                            <span style={{ padding: '0.1rem 0.375rem', background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 4, color: '#f59e0b', fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.05em' }}>YOU</span>
+                          )}
+                        </div>
+                        <div style={{ color: '#f59e0b', fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.04em', display: 'flex', alignItems: 'center', gap: '0.3rem', marginTop: '0.1rem' }}>
+                          <Crown size={9} /> SUPER ADMIN
+                        </div>
+                      </div>
+                    </div>
+                  </td>
 
-              {/* Info */}
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
-                  <span style={{ color: '#f8fafc', fontSize: '0.9375rem', fontWeight: 700 }}>{admin.fullName}</span>
-                  {admin.id === currentUserId && (
-                    <span style={{ padding: '0.125rem 0.5rem', background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 6, color: '#f59e0b', fontSize: '0.6875rem', fontWeight: 700 }}>
-                      YOU
-                    </span>
-                  )}
-                  <span
-                    style={{
-                      padding: '0.125rem 0.5rem',
-                      background: 'rgba(245,158,11,0.1)',
-                      border: '1px solid rgba(245,158,11,0.25)',
+                  {/* Email */}
+                  <td style={{ padding: '0.875rem 1rem', color: '#94a3b8' }}>{admin.email}</td>
+
+                  {/* Note */}
+                  <td style={{ padding: '0.875rem 1rem', color: '#64748b', fontStyle: admin.superAdminNote ? 'normal' : 'italic' }}>
+                    {admin.superAdminNote || '—'}
+                  </td>
+
+                  {/* Companies */}
+                  <td style={{ padding: '0.875rem 1rem', color: '#94a3b8' }}>{admin._count.businessMemberships}</td>
+
+                  {/* Status */}
+                  <td style={{ padding: '0.875rem 1rem' }}>
+                    <span style={{
+                      padding: '0.2rem 0.5rem',
                       borderRadius: 6,
-                      color: '#fbbf24',
-                      fontSize: '0.6875rem',
-                      fontWeight: 700,
-                      letterSpacing: '0.05em',
-                    }}
-                  >
-                    SUPER ADMIN
-                  </span>
-                </div>
-                <div style={{ color: '#64748b', fontSize: '0.8125rem', marginTop: '0.25rem' }}>
-                  {admin.email}
-                </div>
-                {admin.superAdminNote && (
-                  <div style={{ color: '#78716c', fontSize: '0.75rem', marginTop: '0.25rem', fontStyle: 'italic' }}>
-                    {admin.superAdminNote}
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: '1rem', marginTop: '0.375rem' }}>
-                  <span style={{ color: '#475569', fontSize: '0.75rem' }}>
-                    <Users size={11} style={{ display: 'inline', marginRight: 4, verticalAlign: 'middle' }} />
-                    {admin._count.businessMemberships} companies
-                  </span>
-                  <span style={{ color: admin.status === 'active' ? '#22c55e' : '#ef4444', fontSize: '0.75rem', fontWeight: 600 }}>
-                    ● {admin.status}
-                  </span>
-                  <span style={{ color: '#374151', fontSize: '0.75rem' }}>
-                    Since {new Date(admin.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      background: admin.status === 'active' ? 'rgba(52,211,153,0.1)' : 'rgba(239,68,68,0.1)',
+                      color: admin.status === 'active' ? '#34d399' : '#f87171',
+                    }}>
+                      {admin.status}
+                    </span>
+                  </td>
 
-              {/* Actions */}
-              {admin.id !== currentUserId && (
-                <button
-                  onClick={() => setConfirmRevoke(admin)}
-                  disabled={revoking === admin.id}
-                  title="Revoke Super Admin"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '0.4rem',
-                    padding: '0.5rem 0.875rem',
-                    background: 'rgba(239,68,68,0.08)',
-                    border: '1px solid rgba(239,68,68,0.2)',
-                    borderRadius: 8,
-                    color: '#f87171',
-                    fontSize: '0.8125rem',
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    transition: 'all 0.15s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(239,68,68,0.15)'
-                    e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(239,68,68,0.08)'
-                    e.currentTarget.style.borderColor = 'rgba(239,68,68,0.2)'
-                  }}
-                >
-                  {revoking === admin.id ? (
-                    <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
-                  ) : (
-                    <ShieldOff size={13} />
-                  )}
-                  Revoke
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                  {/* Since */}
+                  <td style={{ padding: '0.875rem 1rem', color: '#64748b' }}>
+                    {new Date(admin.createdAt).toLocaleDateString()}
+                  </td>
 
-      {/* Stats footer */}
-      <div
-        style={{
-          marginTop: '2rem',
-          padding: '1rem 1.5rem',
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: 12,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '0.75rem',
-          color: '#475569',
-          fontSize: '0.8125rem',
-        }}
-      >
-        <ShieldCheck size={16} color="#6366f1" />
-        <span>
-          {admins.length} Super Admin{admins.length !== 1 ? 's' : ''} total · All privilege changes are permanently recorded in the platform audit trail
-        </span>
+                  {/* Actions */}
+                  <td style={{ padding: '0.875rem 1rem', textAlign: 'right' }}>
+                    {admin.id === currentUserId ? (
+                      <span style={{ color: '#374151', fontSize: '0.75rem' }}>—</span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmRevoke(admin)}
+                        disabled={revoking === admin.id}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', padding: '0.35rem 0.7rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 6, color: '#f87171', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        {revoking === admin.id ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <ShieldOff size={12} />}
+                        Revoke
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </>
   )
