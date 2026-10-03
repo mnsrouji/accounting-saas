@@ -333,13 +333,41 @@ export class AccountingHealthService {
       where: { businessId },
     })
 
-    const arAccount = defaultAccounts.find((a) => a.code === '110301' || (a.type === 'asset' && a.code.startsWith('1103')))
-    const apAccount = defaultAccounts.find((a) => a.code === '210101' || (a.type === 'liability' && a.code.startsWith('2101')))
-    const salesAccount = defaultAccounts.find((a) => a.code === '410101' || a.type === 'revenue')
-    const vatOutputAccount = defaultAccounts.find((a) => a.code === '210301' || (a.type === 'liability' && a.code.startsWith('2103')))
-    const vatInputAccount = defaultAccounts.find((a) => a.code === '110402' || (a.type === 'asset' && a.code.startsWith('1104')))
-    const cashAccount = defaultAccounts.find((a) => a.code === '110101' || (a.type === 'asset' && a.code.startsWith('1101')))
-    const defaultExpenseAccount = defaultAccounts.find((a) => a.code === '510101' || a.type === 'expense')
+    const arAccount =
+      defaultAccounts.find((a) => a.code === '1300') ||
+      defaultAccounts.find((a) => a.type === 'asset' && (a.name.toLowerCase().includes('receivable') || a.name.includes('عملاء') || a.name.includes('مدينة'))) ||
+      defaultAccounts.find((a) => a.type === 'asset' && !a.isHeader)
+
+    const apAccount =
+      defaultAccounts.find((a) => a.code === '2100') ||
+      defaultAccounts.find((a) => a.type === 'liability' && (a.name.toLowerCase().includes('payable') || a.name.includes('موردين') || a.name.includes('دائنة'))) ||
+      defaultAccounts.find((a) => a.type === 'liability' && !a.isHeader)
+
+    const salesAccount =
+      defaultAccounts.find((a) => a.code === '4100') ||
+      defaultAccounts.find((a) => a.type === 'revenue' && !a.isHeader)
+
+    const vatOutputAccount =
+      defaultAccounts.find((a) => a.code === '2200') ||
+      defaultAccounts.find((a) => a.type === 'liability' && (a.name.toLowerCase().includes('tax') || a.name.includes('ضريبة')))
+
+    const vatInputAccount =
+      defaultAccounts.find((a) => a.code === '2210') ||
+      defaultAccounts.find((a) => a.code === '2200') ||
+      vatOutputAccount
+
+    const cashAccount =
+      defaultAccounts.find((a) => a.code === '1110' || a.code === '1100' || a.code === '1210') ||
+      defaultAccounts.find((a) => a.type === 'asset' && !a.isHeader)
+
+    const invAccount =
+      defaultAccounts.find((a) => a.code === '1400') ||
+      defaultAccounts.find((a) => a.type === 'asset' && (a.name.toLowerCase().includes('inventory') || a.name.includes('مخزون'))) ||
+      cashAccount
+
+    const defaultExpenseAccount =
+      defaultAccounts.find((a) => a.code === '5100' || a.code === '5900') ||
+      defaultAccounts.find((a) => a.type === 'expense' && !a.isHeader)
 
     // Find posted entries
     const postedSources = await prisma.journalEntry.findMany({
@@ -440,12 +468,13 @@ export class AccountingHealthService {
     ).filter((p) => !postedPurchaseIds.has(p.id))
 
     for (const purchase of unlinkedPurchases) {
-      if (!apAccount || !cashAccount) continue
+      if (!apAccount) continue
       try {
         const subtotal = new Decimal(purchase.subtotal || purchase.totalAmount)
         const taxAmt = new Decimal(purchase.taxAmount || 0)
         const total = new Decimal(purchase.totalAmount)
-        const purchaseAcc = defaultAccounts.find((a) => a.code === '510201') || cashAccount
+        const purchaseAcc = invAccount || defaultExpenseAccount || cashAccount
+        if (!purchaseAcc) continue
 
         const lines = [
           {

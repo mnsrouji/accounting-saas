@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { requireBusinessAccess } from '@/lib/auth/require-auth'
 import { prisma } from '@/lib/db/prisma'
+import { AccountingService } from '@/lib/services/accounting-service'
 import { ChartOfAccountsClient, AccountItem } from './ChartOfAccountsClient'
 
 export const metadata: Metadata = {
@@ -14,6 +15,9 @@ interface PageProps {
 export default async function ChartOfAccountsPage({ params }: PageProps) {
   const { businessId } = await params
   const { business } = await requireBusinessAccess(businessId)
+
+  // Ensure standard chart of accounts is available and properly linked
+  await AccountingService.ensureStandardChartOfAccounts(businessId)
 
   const accounts = await prisma.chartOfAccount.findMany({
     where: { businessId },

@@ -108,7 +108,13 @@ export class ExpenseService {
         : undefined
 
       const apAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2100' } }) // AP
-      const vatAccount = await tx.chartOfAccount.findFirst({ where: { businessId, code: '2210' } }) // Input VAT
+      const vatAccount =
+        (await tx.chartOfAccount.findFirst({ where: { businessId, code: '2210' } })) ||
+        (await tx.chartOfAccount.findFirst({ where: { businessId, code: '2200' } })) ||
+        (await tx.chartOfAccount.findFirst({
+          where: { businessId, type: 'liability', isHeader: false, code: { startsWith: '22' } },
+          orderBy: { code: 'asc' },
+        }))
 
       const creditGlAccountId = bankGlAccount || cashGlAccount || apAccount?.id
 
