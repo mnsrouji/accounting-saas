@@ -20,13 +20,17 @@ export default async function UsersAndRolesPage({ params }: PageProps) {
   const isAr = locale === 'ar'
   const isTr = locale === 'tr'
 
-  await requireBusinessAccess(businessId)
+  const access = await requireBusinessAccess(businessId, 'settings', 'full')
 
   const members = await InvitationService.getMembers(businessId)
 
   const t = {
     title: isAr ? 'المستخدمون والصلاحيات' : isTr ? 'Kullanıcılar ve Roller' : 'Users & Roles',
-    subtitle: isAr ? 'دعوة أعضاء الفريق، وتعيين الأدوار التشغيلية وإدارة الصلاحيات' : isTr ? 'Ekip üyelerini davet edin, operasyonel roller atayın ve izinleri yönetin' : 'Invite team members, assign operational roles & manage permissions',
+    subtitle: isAr
+      ? 'إضافة المستخدمين المباشرين، تعيين كلمات المرور، وتخصيص مصفوفة الصلاحيات بدقة'
+      : isTr
+      ? 'Doğrudan kullanıcı ekleme, şifre belirleme ve yetki matrisi özelleştirme'
+      : 'Add direct users, set credentials and fine-tune granular access permissions',
   }
 
   return (

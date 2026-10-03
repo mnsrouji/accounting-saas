@@ -104,8 +104,97 @@ export async function removeMemberAction(businessId: string, targetUserId: strin
     await InvitationService.removeMember(businessId, targetUserId, userId)
 
     revalidatePath(`/b/${businessId}/settings/members`)
+    revalidatePath(`/b/${businessId}/users`)
     return { success: true as const }
   } catch (err: any) {
     return { success: false as const, error: err.message || 'Failed to remove member' }
+  }
+}
+
+export async function createDirectUserAction(params: {
+  businessId: string
+  email: string
+  fullName: string
+  password?: string
+  phone?: string
+  role: MemberRole
+  customPermissions?: string[]
+}) {
+  try {
+    const { userId, role, isSuperAdmin } = await requireBusinessAccess(params.businessId, 'settings', 'full')
+    if (!isSuperAdmin && role !== 'owner' && role !== 'administrator') {
+      return { success: false as const, error: 'Only super administrators or business owners can create users directly.' }
+    }
+
+    const member = await InvitationService.createDirectUser({
+      businessId: params.businessId,
+      email: params.email,
+      fullName: params.fullName,
+      password: params.password,
+      phone: params.phone,
+      role: params.role,
+      customPermissions: params.customPermissions,
+      adminUserId: userId,
+    })
+
+    revalidatePath(`/b/${params.businessId}/settings/members`)
+    revalidatePath(`/b/${params.businessId}/users`)
+    return { success: true as const, data: member }
+  } catch (err: any) {
+    return { success: false as const, error: err.message || 'Failed to create user directly' }
+  }
+}
+
+export async function updateMemberCustomPermissionsAction(params: {
+  businessId: string
+  targetUserId: string
+  permissions: string[]
+  role?: MemberRole
+}) {
+  try {
+    const { userId, role, isSuperAdmin } = await requireBusinessAccess(params.businessId, 'settings', 'full')
+    if (!isSuperAdmin && role !== 'owner' && role !== 'administrator') {
+      return { success: false as const, error: 'Only super administrators or business owners can modify permissions.' }
+    }
+
+    const member = await InvitationService.updateMemberCustomPermissions(
+      params.businessId,
+      params.targetUserId,
+      params.permissions,
+      params.role,
+      userId
+    )
+
+    revalidatePath(`/b/${params.businessId}/settings/members`)
+    revalidatePath(`/b/${params.businessId}/users`)
+    return { success: true as const, data: member }
+  } catch (err: any) {
+    return { success: false as const, error: err.message || 'Failed to update custom permissions' }
+  }
+}
+
+export async function resetUserPasswordDirectAction(params: {
+  businessId: string
+  targetUserId: string
+  newPassword: string
+}) {
+  try {
+    const { userId, role, isSuperAdmin } = await requireBusinessAccess(params.businessId, 'settings', 'full')
+    if (!isSuperAdmin && role !== 'owner' && role !== 'administrator') {
+      return { success: false as const, error: 'Only super administrators or business owners can reset passwords directly.' }
+    }
+
+    await InvitationService.resetUserPasswordDirect(
+      params.businessId,
+      params.targetUserId,
+      params.newPassword,
+      userId
+    )
+
+    revalidatePath(`/b/${params.businessId}/settings/members`)
+    revalidatePath(`/b/${params.businessId}/users`)
+    return { success: true as const }
+  } catch (err: any) {
+    return { success: false as const, error: err.message || 'Failed to reset password' }
   }
 }

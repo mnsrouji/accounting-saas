@@ -8,6 +8,7 @@ import { MemberRole, MemberStatus } from '@prisma/client'
 import { UsageService } from './usage-service'
 import { createAuditLog } from '@/lib/audit/create-audit-log'
 import { AccessDeniedError, ValidationError } from '@/lib/auth/require-auth'
+import { getSupabaseAdmin } from '@/lib/supabase/admin'
 
 export interface InviteUserParams {
   businessId: string
@@ -15,6 +16,17 @@ export interface InviteUserParams {
   fullName?: string
   role: MemberRole
   invitedById: string
+}
+
+export interface CreateDirectUserParams {
+  businessId: string
+  email: string
+  fullName: string
+  password?: string
+  phone?: string
+  role: MemberRole
+  customPermissions?: string[]
+  adminUserId?: string
 }
 
 export class InvitationService {
@@ -346,6 +358,258 @@ export class InvitationService {
       recordType: 'business_user',
       recordId: membership.id,
       oldValues: { userId: targetUserId, role: membership.role },
+    })
+
+    return { success: true }
+  }
+
+  /**
+   * Create a direct user account in the system immediately without requiring email invite.
+   * Creates/links Supabase auth with pre-confirmed email and sets direct active business membership.
+   */
+  static async createDirectUser(params: CreateDirectUserParams) {
+    const {
+      businessId,
+      email,
+      fullName,
+      password,
+      phone,
+      role,
+      customPermissions,
+      adminUserId,
+    } = params
+
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      throw new ValidationError('A valid email address is required.')
+    }
+
+    if (!fullName || fullName.trim().length < 2) {
+      throw new ValidationError('Full name must be at least 2 characters long.')
+    }
+
+    const userPassword = password?.trim() || 'Account@123456'
+    if (userPassword.length < 6) {
+      throw new ValidationError('Password must be at least 6 characters.')
+    }
+
+    // 1. Check user quota limits
+    await UsageService.assertQuota(businessId, 'users')
+
+    let authUserId: string | null = null
+
+    // 2. Create or sync user with Supabase Auth Admin
+    try {
+      const supabaseAdmin = getSupabaseAdmin()
+      const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
+        email: normalizedEmail,
+        password: userPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name: fullName.trim(),
+          phone: phone?.trim() || null,
+        },
+      })
+
+      if (authError) {
+        // If user already exists in auth, find existing auth user ID
+        if (authError.message.toLowerCase().includes('already') || authError.message.toLowerCase().includes('exists')) {
+          const { data: listData } = await supabaseAdmin.auth.admin.listUsers()
+          const existing = listData?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail)
+          if (existing) {
+            authUserId = existing.id
+            if (password) {
+              await supabaseAdmin.auth.admin.updateUserById(existing.id, {
+                password: userPassword,
+                user_metadata: { full_name: fullName.trim() },
+              })
+            }
+          }
+        } else {
+          console.warn('Supabase auth create user warning:', authError.message)
+        }
+      } else if (authData?.user) {
+        authUserId = authData.user.id
+      }
+    } catch (e: any) {
+      console.warn('Supabase admin call exception:', e?.message || e)
+    }
+
+    // 3. Upsert user in Prisma DB
+    let user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    })
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          ...(authUserId ? { id: authUserId } : {}),
+          email: normalizedEmail,
+          fullName: fullName.trim(),
+          phone: phone?.trim() || null,
+          status: 'active',
+        },
+      })
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          fullName: fullName.trim(),
+          ...(phone ? { phone: phone.trim() } : {}),
+          status: 'active',
+        },
+      })
+    }
+
+    // 4. Upsert active business membership
+    const existingMembership = await prisma.businessUser.findUnique({
+      where: {
+        userId_businessId: {
+          userId: user.id,
+          businessId,
+        },
+      },
+    })
+
+    let membership: any
+    if (existingMembership) {
+      membership = await prisma.businessUser.update({
+        where: { id: existingMembership.id },
+        data: {
+          role,
+          status: 'active',
+          permissions: customPermissions ? (customPermissions as any) : existingMembership.permissions,
+          joinedAt: existingMembership.joinedAt || new Date(),
+        },
+        include: { user: true, roleModel: true },
+      })
+    } else {
+      membership = await prisma.businessUser.create({
+        data: {
+          businessId,
+          userId: user.id,
+          role,
+          status: 'active',
+          permissions: customPermissions ? (customPermissions as any) : null,
+          invitedBy: adminUserId,
+          joinedAt: new Date(),
+        },
+        include: { user: true, roleModel: true },
+      })
+    }
+
+    // 5. Audit Log
+    await createAuditLog({
+      businessId,
+      userId: adminUserId,
+      action: 'create',
+      module: 'members',
+      recordType: 'business_user_direct',
+      recordId: membership.id,
+      newValues: {
+        email: normalizedEmail,
+        fullName: fullName.trim(),
+        role,
+        permissionsCount: customPermissions?.length || 0,
+        directCreated: true,
+      },
+    })
+
+    return membership
+  }
+
+  /**
+   * Update granular custom permissions for a member.
+   */
+  static async updateMemberCustomPermissions(
+    businessId: string,
+    targetUserId: string,
+    permissions: string[],
+    role?: MemberRole,
+    adminUserId?: string
+  ) {
+    const membership = await prisma.businessUser.findUnique({
+      where: {
+        userId_businessId: {
+          userId: targetUserId,
+          businessId,
+        },
+      },
+    })
+
+    if (!membership) {
+      throw new ValidationError('Member not found in this business.')
+    }
+
+    const updated = await prisma.businessUser.update({
+      where: { id: membership.id },
+      data: {
+        permissions: permissions as any,
+        ...(role ? { role } : {}),
+      },
+      include: { user: true, roleModel: true },
+    })
+
+    await createAuditLog({
+      businessId,
+      userId: adminUserId,
+      action: 'permission_change',
+      module: 'members',
+      recordType: 'business_user_permissions',
+      recordId: membership.id,
+      newValues: { permissionsCount: permissions.length, permissions, role },
+    })
+
+    return updated
+  }
+
+  /**
+   * Reset a user password directly (Super Admin only).
+   */
+  static async resetUserPasswordDirect(
+    businessId: string,
+    targetUserId: string,
+    newPassword: string,
+    adminUserId?: string
+  ) {
+    if (!newPassword || newPassword.trim().length < 6) {
+      throw new ValidationError('Password must be at least 6 characters long.')
+    }
+
+    const membership = await prisma.businessUser.findUnique({
+      where: {
+        userId_businessId: {
+          userId: targetUserId,
+          businessId,
+        },
+      },
+      include: { user: true },
+    })
+
+    if (!membership) {
+      throw new ValidationError('Member not found in this business.')
+    }
+
+    try {
+      const supabaseAdmin = getSupabaseAdmin()
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(targetUserId, {
+        password: newPassword.trim(),
+      })
+      if (error) {
+        throw new Error(error.message)
+      }
+    } catch (err: any) {
+      throw new Error(`Failed to update password: ${err.message}`)
+    }
+
+    await createAuditLog({
+      businessId,
+      userId: adminUserId,
+      action: 'update',
+      module: 'members',
+      recordType: 'user_password',
+      recordId: targetUserId,
+      newValues: { action: 'direct_password_reset', targetEmail: membership.user.email },
     })
 
     return { success: true }
