@@ -1,7 +1,7 @@
 // =============================================================
 // Members & Permissions Manager Client Component
 // Multi-Tenant SaaS Accounting & ERP Platform
-// Supports: Direct User Creation, Granular Permissions & Password Resets
+// Supports: Direct User Creation, Dual Permissions Views (Detailed & Matrix), & Direct Password Resets
 // =============================================================
 
 'use client'
@@ -22,6 +22,7 @@ import {
   ROLE_PRESET_PERMISSIONS,
   ALL_PERMISSION_CODES,
   PermissionModuleGroup,
+  PermissionDefinition,
 } from '@/lib/auth/permissions-registry'
 import {
   Users,
@@ -50,9 +51,10 @@ import {
   Truck,
   Copy,
   Layers,
+  Table,
+  List,
   Sparkles,
-  ChevronRight,
-  Filter,
+  HelpCircle,
 } from 'lucide-react'
 
 export interface MemberRow {
@@ -129,7 +131,6 @@ export default function MembersManagerClient({
     ROLE_PRESET_PERMISSIONS['accountant'] || []
   )
   const [showNewPassword, setShowNewPassword] = useState(false)
-  const [addUserActiveModule, setAddUserActiveModule] = useState<string>('all')
 
   // Edit Permissions Modal State
   const [editingMember, setEditingMember] = useState<MemberRow | null>(null)
@@ -137,6 +138,7 @@ export default function MembersManagerClient({
   const [editSelectedPermissions, setEditSelectedPermissions] = useState<string[]>([])
   const [permActiveModule, setPermActiveModule] = useState<string>('all')
   const [permSearchQuery, setPermSearchQuery] = useState('')
+  const [permModalMode, setPermModalMode] = useState<'matrix' | 'detailed'>('matrix') // Dual viewing mode!
 
   // Direct Reset Password Modal State
   const [resettingMember, setResettingMember] = useState<MemberRow | null>(null)
@@ -165,6 +167,8 @@ export default function MembersManagerClient({
     allPermissions: isAr ? 'صلاحيات كاملة' : isTr ? 'Tam Yetkili' : 'Full Access',
     customCount: (count: number) => isAr ? `${count} صلاحية مفعلة` : isTr ? `${count} özel izin` : `${count} custom perms`,
     allModules: isAr ? 'كافة الوحدات والأنظمة' : isTr ? 'Tüm Modüller' : 'All Modules',
+    viewMatrixMode: isAr ? 'مصفوفة جدولية سريعة' : isTr ? 'Matris Tablosu' : 'Matrix Grid',
+    viewDetailedMode: isAr ? 'قائمة تفصيلية' : isTr ? 'Ayrıntılı Liste' : 'Detailed List',
     roles: {
       owner: isAr ? 'مالك المنشأة (Owner)' : isTr ? 'Kurucu / Sahip' : 'Owner',
       administrator: isAr ? 'مدير نظام (Admin)' : isTr ? 'Yönetici (Admin)' : 'Administrator',
@@ -368,7 +372,7 @@ export default function MembersManagerClient({
     currentList: string[],
     setList: React.Dispatch<React.SetStateAction<string[]>>
   ) {
-    const moduleCodes = groupPermissions(moduleGroup).map((p) => p.code)
+    const moduleCodes = moduleGroup.permissions.map((p) => p.code)
     const allChecked = moduleCodes.every((code) => currentList.includes(code))
 
     if (allChecked) {
@@ -379,8 +383,21 @@ export default function MembersManagerClient({
     }
   }
 
-  function groupPermissions(g: PermissionModuleGroup) {
-    return g.permissions
+  // Toggle all permissions matching an action across entire system
+  function toggleActionAcrossSystem(
+    actionType: 'view' | 'create' | 'edit' | 'delete' | 'manage' | 'post' | 'export',
+    currentList: string[],
+    setList: React.Dispatch<React.SetStateAction<string[]>>
+  ) {
+    const actionPerms = SYSTEM_PERMISSIONS_REGISTRY.flatMap((g) =>
+      g.permissions.filter((p) => p.action === actionType).map((p) => p.code)
+    )
+    const allChecked = actionPerms.every((c) => currentList.includes(c))
+    if (allChecked) {
+      setList(currentList.filter((c) => !actionPerms.includes(c)))
+    } else {
+      setList(Array.from(new Set([...currentList, ...actionPerms])))
+    }
   }
 
   // Filtered members list
@@ -756,7 +773,7 @@ export default function MembersManagerClient({
         </div>
       )}
 
-      {/* TAB 2: ROLES & PERMISSIONS MATRIX */}
+      {/* TAB 2: ROLES & PERMISSIONS OVERVIEW */}
       {activeTab === 'matrix' && (
         <div className="card" style={{ padding: '1.5rem', border: '1px solid var(--border-color)' }}>
           <div style={{ marginBottom: '1.5rem' }}>
@@ -1053,7 +1070,7 @@ export default function MembersManagerClient({
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 2: ADVANCED CLEAN PERMISSIONS MANAGER MODAL         */}
+      {/* MODAL 2: DUAL-VIEW CUSTOM PERMISSIONS MANAGER MODAL       */}
       {/* ========================================================= */}
       {editingMember && (
         <div
@@ -1072,8 +1089,8 @@ export default function MembersManagerClient({
           <div
             style={{
               width: '100%',
-              maxWidth: '980px',
-              height: '88vh',
+              maxWidth: '1080px',
+              height: '90vh',
               backgroundColor: 'var(--bg-surface, #ffffff)',
               borderRadius: '16px',
               boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)',
@@ -1127,14 +1144,60 @@ export default function MembersManagerClient({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setEditingMember(null)}
-                className="btn btn-secondary btn-sm"
-                style={{ width: 34, height: 34, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-              >
-                <X size={18} />
-              </button>
+              {/* View Switcher Toggle & Close Button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    background: 'var(--bg-surface)',
+                    padding: '0.2rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setPermModalMode('matrix')}
+                    className={`btn btn-sm ${permModalMode === 'matrix' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '0.25rem 0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      borderRadius: '6px',
+                    }}
+                  >
+                    <Table size={14} />
+                    <span>{t.viewMatrixMode}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPermModalMode('detailed')}
+                    className={`btn btn-sm ${permModalMode === 'detailed' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '0.25rem 0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      borderRadius: '6px',
+                    }}
+                  >
+                    <List size={14} />
+                    <span>{t.viewDetailedMode}</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(null)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: 34, height: 34, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
 
             {/* Top Toolbar: Quick Presets & Search */}
@@ -1215,267 +1278,585 @@ export default function MembersManagerClient({
               </div>
             </div>
 
-            {/* Modal Body: Two Column (Module Nav + Permissions Grid) */}
-            <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-              {/* Sidebar Module Navigation */}
-              <div
-                style={{
-                  width: '240px',
-                  borderInlineEnd: '1px solid var(--border-color)',
-                  background: 'var(--bg-page)',
-                  overflowY: 'auto',
-                  padding: '0.75rem 0.5rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.25rem',
-                  flexShrink: 0,
-                }}
-              >
-                {/* All Modules Tab */}
-                <button
-                  type="button"
-                  onClick={() => setPermActiveModule('all')}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '0.625rem 0.75rem',
-                    borderRadius: '8px',
-                    border: 'none',
-                    background: permActiveModule === 'all' ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
-                    color: permActiveModule === 'all' ? 'var(--color-brand-500)' : 'var(--text-primary)',
-                    fontWeight: permActiveModule === 'all' ? 700 : 500,
-                    fontSize: '0.8125rem',
-                    cursor: 'pointer',
-                    textAlign: isAr ? 'right' : 'left',
-                    width: '100%',
-                    transition: 'all 0.15s ease',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <Layers size={16} />
-                    <span>{t.allModules}</span>
-                  </div>
-                  <span
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      padding: '0.1rem 0.4rem',
-                      borderRadius: '10px',
-                      background: permActiveModule === 'all' ? 'var(--color-brand-500)' : 'rgba(100, 116, 139, 0.15)',
-                      color: permActiveModule === 'all' ? '#ffffff' : 'var(--text-muted)',
-                    }}
-                  >
-                    {editSelectedPermissions.length}
-                  </span>
-                </button>
-
-                <div style={{ height: '1px', background: 'var(--border-color)', margin: '0.35rem 0.5rem' }} />
-
-                {/* Individual Modules */}
-                {SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
-                  const moduleCodes = group.permissions.map((p) => p.code)
-                  const enabledCount = moduleCodes.filter((c) => editSelectedPermissions.includes(c)).length
-                  const isSelected = permActiveModule === group.moduleId
-                  const allActive = enabledCount === moduleCodes.length && moduleCodes.length > 0
-
-                  return (
-                    <button
-                      key={group.moduleId}
-                      type="button"
-                      onClick={() => setPermActiveModule(group.moduleId)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '0.625rem 0.75rem',
-                        borderRadius: '8px',
-                        border: 'none',
-                        background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
-                        color: isSelected ? 'var(--color-brand-500)' : 'var(--text-primary)',
-                        fontWeight: isSelected ? 700 : 500,
-                        fontSize: '0.8125rem',
-                        cursor: 'pointer',
-                        textAlign: isAr ? 'right' : 'left',
-                        width: '100%',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
-                        <span style={{ color: isSelected ? 'var(--color-brand-500)' : 'var(--text-muted)' }}>
-                          {MODULE_ICONS[group.moduleId] || <Shield size={16} />}
-                        </span>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
-                        </span>
-                      </div>
-
-                      <span
-                        style={{
-                          fontSize: '0.7rem',
-                          fontWeight: 700,
-                          padding: '0.1rem 0.4rem',
-                          borderRadius: '10px',
-                          background: allActive
-                            ? 'rgba(16, 185, 129, 0.15)'
-                            : enabledCount > 0
-                            ? 'rgba(99, 102, 241, 0.15)'
-                            : 'rgba(100, 116, 139, 0.12)',
-                          color: allActive
-                            ? '#059669'
-                            : enabledCount > 0
-                            ? 'var(--color-brand-500)'
-                            : 'var(--text-muted)',
-                        }}
-                      >
-                        {enabledCount}/{moduleCodes.length}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Main Permissions Content Area */}
+            {/* Modal Body: VIEW 1 — MATRIX GRID TABLE */}
+            {permModalMode === 'matrix' && (
               <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
-                {editModalFilteredGroups.length === 0 ? (
-                  <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    <Search size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
-                    <div style={{ fontWeight: 600 }}>{isAr ? 'لا توجد صلاحيات مطابقة للبحث' : 'No matching permissions found'}</div>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                    {editModalFilteredGroups.map((group) => {
-                      const moduleCodes = group.permissions.map((p) => p.code)
-                      const allChecked = moduleCodes.every((c) => editSelectedPermissions.includes(c))
-                      const someChecked = moduleCodes.some((c) => editSelectedPermissions.includes(c))
-
-                      return (
-                        <div
-                          key={group.moduleId}
-                          style={{
-                            border: '1px solid var(--border-color)',
-                            borderRadius: '12px',
-                            background: 'var(--bg-surface)',
-                            overflow: 'hidden',
-                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-                          }}
-                        >
-                          {/* Module Header Bar */}
-                          <div
-                            style={{
-                              padding: '0.75rem 1rem',
-                              background: 'var(--bg-page)',
-                              borderBottom: '1px solid var(--border-color)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                            }}
-                          >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-brand-500)' }}>
-                              {MODULE_ICONS[group.moduleId] || <Shield size={18} />}
-                              <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 800 }}>
-                                {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
-                              </h4>
+                <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-page)', borderBottom: '2px solid var(--border-color)' }}>
+                          <th style={{ padding: '0.875rem 1rem', fontSize: '0.75rem', fontWeight: 700, width: '26%' }}>
+                            {isAr ? 'الوحدة / النظام' : 'System Module'}
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>👁️ {isAr ? 'عرض' : 'View'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('view', editSelectedPermissions, setEditSelectedPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
                             </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>➕ {isAr ? 'إنشاء' : 'Create'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('create', editSelectedPermissions, setEditSelectedPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#059669', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>✏️ {isAr ? 'تعديل' : 'Edit'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('edit', editSelectedPermissions, setEditSelectedPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#d97706', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>🗑️ {isAr ? 'حذف' : 'Delete'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('delete', editSelectedPermissions, setEditSelectedPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '14%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>⚡ {isAr ? 'إجراءات متقدمة' : 'Advanced'}</span>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>📥 {isAr ? 'تصدير' : 'Export'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('export', editSelectedPermissions, setEditSelectedPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#0891b2', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
+                          const moduleCodes = group.permissions.map((p) => p.code)
+                          const allChecked = moduleCodes.every((c) => editSelectedPermissions.includes(c))
+                          const enabledCount = moduleCodes.filter((c) => editSelectedPermissions.includes(c)).length
 
-                            <button
-                              type="button"
-                              onClick={() => toggleModuleInList(group, editSelectedPermissions, setEditSelectedPermissions)}
-                              className="btn btn-secondary btn-sm"
-                              style={{ fontSize: '0.725rem', padding: '0.2rem 0.6rem' }}
+                          // Match perms by action
+                          const viewPerm = group.permissions.find((p) => p.action === 'view')
+                          const createPerm = group.permissions.find((p) => p.action === 'create')
+                          const editPerm = group.permissions.find((p) => p.action === 'edit')
+                          const deletePerm = group.permissions.find((p) => p.action === 'delete')
+                          const exportPerm = group.permissions.find((p) => p.action === 'export')
+                          const advPerms = group.permissions.filter(
+                            (p) => p.action === 'manage' || p.action === 'post' || (p.action !== 'view' && p.action !== 'create' && p.action !== 'edit' && p.action !== 'delete' && p.action !== 'export')
+                          )
+
+                          return (
+                            <tr
+                              key={group.moduleId}
+                              style={{
+                                borderBottom: '1px solid var(--border-color)',
+                                backgroundColor: enabledCount > 0 ? 'rgba(99, 102, 241, 0.02)' : 'transparent',
+                              }}
+                              className="table-row-hover"
                             >
-                              {allChecked
-                                ? (isAr ? 'إلغاء تحديد الوحدة' : 'Deselect Module')
-                                : (isAr ? 'تحديد كافة الوحدة' : 'Select All')}
-                            </button>
-                          </div>
-
-                          {/* Permissions Rows */}
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            {group.permissions.map((p, idx) => {
-                              const isChecked = editSelectedPermissions.includes(p.code)
-                              const actionInfo = ACTION_COLORS[p.action] || ACTION_COLORS.manage
-
-                              return (
-                                <div
-                                  key={p.code}
-                                  onClick={() => togglePermissionInList(p.code, editSelectedPermissions, setEditSelectedPermissions)}
-                                  style={{
-                                    padding: '0.875rem 1rem',
-                                    borderBottom: idx === group.permissions.length - 1 ? 'none' : '1px solid var(--border-color)',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    cursor: 'pointer',
-                                    backgroundColor: isChecked ? 'rgba(99, 102, 241, 0.03)' : 'transparent',
-                                    transition: 'background-color 0.15s ease',
-                                    gap: '1rem',
-                                  }}
-                                >
-                                  {/* Right side: Checkbox + info */}
-                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1 }}>
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => {}} // Handled by parent div
-                                      style={{
-                                        width: '18px',
-                                        height: '18px',
-                                        marginTop: '0.15rem',
-                                        cursor: 'pointer',
-                                        accentColor: 'var(--color-brand-500, #4f46e5)',
-                                      }}
-                                    />
+                              {/* Module Title & Row Toggle */}
+                              <td style={{ padding: '0.875rem 1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                                    <span style={{ color: 'var(--color-brand-500)' }}>
+                                      {MODULE_ICONS[group.moduleId] || <Shield size={16} />}
+                                    </span>
                                     <div>
-                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
-                                        <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                                          {isAr ? p.nameAr : isTr ? p.nameTr : p.nameEn}
-                                        </span>
-                                        <span
-                                          style={{
-                                            fontSize: '0.65rem',
-                                            fontWeight: 700,
-                                            background: actionInfo.bg,
-                                            color: actionInfo.text,
-                                            padding: '0.1rem 0.4rem',
-                                            borderRadius: '4px',
-                                          }}
-                                        >
-                                          {isAr ? actionInfo.labelAr : actionInfo.labelEn}
-                                        </span>
+                                      <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                                        {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
                                       </div>
-                                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
-                                        {isAr ? p.descriptionAr : isTr ? p.descriptionTr : p.descriptionEn}
-                                      </p>
+                                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                        {enabledCount} من {moduleCodes.length} {isAr ? 'مفعلة' : 'active'}
+                                      </div>
                                     </div>
                                   </div>
 
-                                  {/* Left side: Code Badge */}
-                                  <span
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleModuleInList(group, editSelectedPermissions, setEditSelectedPermissions)}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ fontSize: '0.675rem', padding: '0.15rem 0.45rem', borderRadius: '4px' }}
+                                    title={isAr ? 'تحديد / إلغاء تحديد كامل الصف' : 'Toggle entire row'}
+                                  >
+                                    {allChecked ? (isAr ? 'إلغاء' : 'Clear') : (isAr ? 'تحديد' : 'All')}
+                                  </button>
+                                </div>
+                              </td>
+
+                              {/* View Action Cell */}
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {viewPerm ? (
+                                  <label
+                                    title={`${viewPerm.nameAr} (${viewPerm.code})\n${viewPerm.descriptionAr}`}
                                     style={{
-                                      fontSize: '0.675rem',
-                                      fontFamily: 'monospace',
-                                      color: 'var(--text-muted)',
-                                      background: 'var(--bg-page)',
-                                      padding: '0.15rem 0.45rem',
-                                      borderRadius: '4px',
-                                      border: '1px solid var(--border-color)',
-                                      flexShrink: 0,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: editSelectedPermissions.includes(viewPerm.code) ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
                                     }}
                                   >
-                                    {p.code}
-                                  </span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )
-                    })}
+                                    <input
+                                      type="checkbox"
+                                      checked={editSelectedPermissions.includes(viewPerm.code)}
+                                      onChange={() => togglePermissionInList(viewPerm.code, editSelectedPermissions, setEditSelectedPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#2563eb' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              {/* Create Action Cell */}
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {createPerm ? (
+                                  <label
+                                    title={`${createPerm.nameAr} (${createPerm.code})\n${createPerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: editSelectedPermissions.includes(createPerm.code) ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={editSelectedPermissions.includes(createPerm.code)}
+                                      onChange={() => togglePermissionInList(createPerm.code, editSelectedPermissions, setEditSelectedPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#059669' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              {/* Edit Action Cell */}
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {editPerm ? (
+                                  <label
+                                    title={`${editPerm.nameAr} (${editPerm.code})\n${editPerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: editSelectedPermissions.includes(editPerm.code) ? 'rgba(245, 158, 11, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={editSelectedPermissions.includes(editPerm.code)}
+                                      onChange={() => togglePermissionInList(editPerm.code, editSelectedPermissions, setEditSelectedPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#d97706' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              {/* Delete Action Cell */}
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {deletePerm ? (
+                                  <label
+                                    title={`${deletePerm.nameAr} (${deletePerm.code})\n${deletePerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: editSelectedPermissions.includes(deletePerm.code) ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={editSelectedPermissions.includes(deletePerm.code)}
+                                      onChange={() => togglePermissionInList(deletePerm.code, editSelectedPermissions, setEditSelectedPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#dc2626' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              {/* Advanced / Post / Manage Actions Cell */}
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {advPerms.length > 0 ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                                    {advPerms.map((ap) => {
+                                      const isAct = editSelectedPermissions.includes(ap.code)
+                                      return (
+                                        <label
+                                          key={ap.code}
+                                          title={`${ap.nameAr} (${ap.code})\n${ap.descriptionAr}`}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.35rem',
+                                            cursor: 'pointer',
+                                            fontSize: '0.6875rem',
+                                            fontWeight: 600,
+                                            padding: '0.15rem 0.35rem',
+                                            borderRadius: '4px',
+                                            background: isAct ? 'rgba(168, 85, 247, 0.12)' : 'rgba(100, 116, 139, 0.06)',
+                                            color: isAct ? '#7c3aed' : 'var(--text-muted)',
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={isAct}
+                                            onChange={() => togglePermissionInList(ap.code, editSelectedPermissions, setEditSelectedPermissions)}
+                                            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#7c3aed' }}
+                                          />
+                                          <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {ap.nameAr.split(' ')[0]}
+                                          </span>
+                                        </label>
+                                      )
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              {/* Export Action Cell */}
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {exportPerm ? (
+                                  <label
+                                    title={`${exportPerm.nameAr} (${exportPerm.code})\n${exportPerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: editSelectedPermissions.includes(exportPerm.code) ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={editSelectedPermissions.includes(exportPerm.code)}
+                                      onChange={() => togglePermissionInList(exportPerm.code, editSelectedPermissions, setEditSelectedPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#0891b2' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
-                )}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Modal Body: VIEW 2 — DETAILED TWO-COLUMN LIST VIEW */}
+            {permModalMode === 'detailed' && (
+              <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                {/* Sidebar Module Navigation */}
+                <div
+                  style={{
+                    width: '240px',
+                    borderInlineEnd: '1px solid var(--border-color)',
+                    background: 'var(--bg-page)',
+                    overflowY: 'auto',
+                    padding: '0.75rem 0.5rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.25rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  {/* All Modules Tab */}
+                  <button
+                    type="button"
+                    onClick={() => setPermActiveModule('all')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.625rem 0.75rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: permActiveModule === 'all' ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                      color: permActiveModule === 'all' ? 'var(--color-brand-500)' : 'var(--text-primary)',
+                      fontWeight: permActiveModule === 'all' ? 700 : 500,
+                      fontSize: '0.8125rem',
+                      cursor: 'pointer',
+                      textAlign: isAr ? 'right' : 'left',
+                      width: '100%',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Layers size={16} />
+                      <span>{t.allModules}</span>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        padding: '0.1rem 0.4rem',
+                        borderRadius: '10px',
+                        background: permActiveModule === 'all' ? 'var(--color-brand-500)' : 'rgba(100, 116, 139, 0.15)',
+                        color: permActiveModule === 'all' ? '#ffffff' : 'var(--text-muted)',
+                      }}
+                    >
+                      {editSelectedPermissions.length}
+                    </span>
+                  </button>
+
+                  <div style={{ height: '1px', background: 'var(--border-color)', margin: '0.35rem 0.5rem' }} />
+
+                  {/* Individual Modules */}
+                  {SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
+                    const moduleCodes = group.permissions.map((p) => p.code)
+                    const enabledCount = moduleCodes.filter((c) => editSelectedPermissions.includes(c)).length
+                    const isSelected = permActiveModule === group.moduleId
+                    const allActive = enabledCount === moduleCodes.length && moduleCodes.length > 0
+
+                    return (
+                      <button
+                        key={group.moduleId}
+                        type="button"
+                        onClick={() => setPermActiveModule(group.moduleId)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.625rem 0.75rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                          color: isSelected ? 'var(--color-brand-500)' : 'var(--text-primary)',
+                          fontWeight: isSelected ? 700 : 500,
+                          fontSize: '0.8125rem',
+                          cursor: 'pointer',
+                          textAlign: isAr ? 'right' : 'left',
+                          width: '100%',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                          <span style={{ color: isSelected ? 'var(--color-brand-500)' : 'var(--text-muted)' }}>
+                            {MODULE_ICONS[group.moduleId] || <Shield size={16} />}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
+                          </span>
+                        </div>
+
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '10px',
+                            background: allActive
+                              ? 'rgba(16, 185, 129, 0.15)'
+                              : enabledCount > 0
+                              ? 'rgba(99, 102, 241, 0.15)'
+                              : 'rgba(100, 116, 139, 0.12)',
+                            color: allActive
+                              ? '#059669'
+                              : enabledCount > 0
+                              ? 'var(--color-brand-500)'
+                              : 'var(--text-muted)',
+                          }}
+                        >
+                          {enabledCount}/{moduleCodes.length}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Main Permissions Detailed Grid */}
+                <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+                  {editModalFilteredGroups.length === 0 ? (
+                    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <Search size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+                      <div style={{ fontWeight: 600 }}>{isAr ? 'لا توجد صلاحيات مطابقة للبحث' : 'No matching permissions found'}</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                      {editModalFilteredGroups.map((group) => {
+                        const moduleCodes = group.permissions.map((p) => p.code)
+                        const allChecked = moduleCodes.every((c) => editSelectedPermissions.includes(c))
+
+                        return (
+                          <div
+                            key={group.moduleId}
+                            style={{
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '12px',
+                              background: 'var(--bg-surface)',
+                              overflow: 'hidden',
+                              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                            }}
+                          >
+                            {/* Module Header Bar */}
+                            <div
+                              style={{
+                                padding: '0.75rem 1rem',
+                                background: 'var(--bg-page)',
+                                borderBottom: '1px solid var(--border-color)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-brand-500)' }}>
+                                {MODULE_ICONS[group.moduleId] || <Shield size={18} />}
+                                <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 800 }}>
+                                  {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
+                                </h4>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => toggleModuleInList(group, editSelectedPermissions, setEditSelectedPermissions)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.725rem', padding: '0.2rem 0.6rem' }}
+                              >
+                                {allChecked
+                                  ? (isAr ? 'إلغاء تحديد الوحدة' : 'Deselect Module')
+                                  : (isAr ? 'تحديد كافة الوحدة' : 'Select All')}
+                              </button>
+                            </div>
+
+                            {/* Permissions Rows */}
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              {group.permissions.map((p, idx) => {
+                                const isChecked = editSelectedPermissions.includes(p.code)
+                                const actionInfo = ACTION_COLORS[p.action] || ACTION_COLORS.manage
+
+                                return (
+                                  <div
+                                    key={p.code}
+                                    onClick={() => togglePermissionInList(p.code, editSelectedPermissions, setEditSelectedPermissions)}
+                                    style={{
+                                      padding: '0.875rem 1rem',
+                                      borderBottom: idx === group.permissions.length - 1 ? 'none' : '1px solid var(--border-color)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      cursor: 'pointer',
+                                      backgroundColor: isChecked ? 'rgba(99, 102, 241, 0.03)' : 'transparent',
+                                      transition: 'background-color 0.15s ease',
+                                      gap: '1rem',
+                                    }}
+                                  >
+                                    {/* Right side: Checkbox + info */}
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {}} // Handled by parent div
+                                        style={{
+                                          width: '18px',
+                                          height: '18px',
+                                          marginTop: '0.15rem',
+                                          cursor: 'pointer',
+                                          accentColor: 'var(--color-brand-500, #4f46e5)',
+                                        }}
+                                      />
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                                          <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                            {isAr ? p.nameAr : isTr ? p.nameTr : p.nameEn}
+                                          </span>
+                                          <span
+                                            style={{
+                                              fontSize: '0.65rem',
+                                              fontWeight: 700,
+                                              background: actionInfo.bg,
+                                              color: actionInfo.text,
+                                              padding: '0.1rem 0.4rem',
+                                              borderRadius: '4px',
+                                            }}
+                                          >
+                                            {isAr ? actionInfo.labelAr : actionInfo.labelEn}
+                                          </span>
+                                        </div>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                                          {isAr ? p.descriptionAr : isTr ? p.descriptionTr : p.descriptionEn}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    {/* Left side: Code Badge */}
+                                    <span
+                                      style={{
+                                        fontSize: '0.675rem',
+                                        fontFamily: 'monospace',
+                                        color: 'var(--text-muted)',
+                                        background: 'var(--bg-page)',
+                                        padding: '0.15rem 0.45rem',
+                                        borderRadius: '4px',
+                                        border: '1px solid var(--border-color)',
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      {p.code}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Modal Footer */}
             <div
