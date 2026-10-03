@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache'
 
 export async function runAccountingDiagnosticAction(businessId: string) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'accounting', 'read')
     const report = await AccountingHealthService.runComprehensiveDiagnostic(businessId)
     return { success: true, report }
   } catch (err: any) {
@@ -16,7 +16,7 @@ export async function runAccountingDiagnosticAction(businessId: string) {
 
 export async function healAndRepostLedgerAction(businessId: string) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'accounting', 'write')
     const result = await AccountingHealthService.repostAndHealLedgers(businessId, userId)
 
     revalidatePath(`/b/${businessId}/reports/balance-sheet`)

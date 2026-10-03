@@ -10,7 +10,7 @@ export async function getRevaluationPreviewAction(
   rates?: Record<string, number>
 ) {
   try {
-    await requireBusinessAccess(businessId)
+    await requireBusinessAccess(businessId, 'accounting', 'read')
     const asOfDate = asOfDateStr ? new Date(asOfDateStr) : new Date()
     const preview = await CurrencyRevaluationService.getRevaluationPreview(businessId, asOfDate, rates)
     return { success: true, preview }
@@ -30,7 +30,7 @@ export async function executeRevaluationAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'accounting', 'write')
     const asOfDate = new Date(payload.asOfDateStr)
     const reversalDate = payload.reversalDateStr ? new Date(payload.reversalDateStr) : undefined
 

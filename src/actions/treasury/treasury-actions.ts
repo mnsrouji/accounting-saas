@@ -49,7 +49,7 @@ export async function createCashAccountAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const account = await TreasuryAccountService.createCashAccount({
       businessId,
       name: data.name,
@@ -83,7 +83,7 @@ export async function createBankAccountAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const account = await TreasuryAccountService.createBankAccount({
       businessId,
       accountName: data.name,
@@ -106,7 +106,7 @@ export async function createBankAccountAction(
 
 export async function syncTreasuryBalancesAction(businessId: string) {
   try {
-    await requireBusinessAccess(businessId)
+    await requireBusinessAccess(businessId, 'treasury', 'write')
     await TreasuryAccountService.syncTreasuryBalances(businessId)
     safeRevalidate(businessId)
     return { success: true as const }
@@ -134,7 +134,7 @@ export async function postTreasuryTransactionAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
 
     // Find default counterpart GL account if not provided
     let counterpartId = data.counterpartGlAccountId
@@ -197,7 +197,7 @@ export async function createTransferAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const transfer = await TreasuryTransferService.createTransfer({
       businessId,
       sourceAccountType: data.sourceAccountType,
@@ -223,7 +223,7 @@ export async function createTransferAction(
 
 export async function approveTransferAction(businessId: string, transferId: string) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const transfer = await TreasuryTransferService.approveTransfer({
       businessId,
       transferId,
@@ -238,7 +238,7 @@ export async function approveTransferAction(businessId: string, transferId: stri
 
 export async function postTransferAction(businessId: string, transferId: string) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const result = await TreasuryTransferService.postTransfer({
       businessId,
       transferId,
@@ -275,7 +275,7 @@ export async function importBankStatementAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const statementNumber = await DocumentNumberingService.generateNumber(businessId, 'bank_statement')
 
     const statement = await BankStatementService.importStatement({
@@ -322,7 +322,7 @@ export async function createReconciliationSessionAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const session = await BankReconciliationService.createReconciliation({
       businessId,
       bankAccountId: data.bankAccountId,
@@ -349,7 +349,7 @@ export async function autoMatchTransactionsAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const result = await BankReconciliationService.autoMatch({
       businessId,
       reconciliationId,
@@ -376,7 +376,7 @@ export async function matchTransactionsManuallyAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     // Find amount of the statement line
     const line = await prisma.bankStatementLine.findUnique({
       where: { id: data.statementLineId },
@@ -404,7 +404,7 @@ export async function unmatchTransactionAction(
   matchId: string
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const result = await BankReconciliationService.unmatch({
       businessId,
       reconciliationId,
@@ -430,7 +430,7 @@ export async function postReconciliationAdjustmentAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const adjustment = await BankReconciliationService.createAdjustment({
       businessId,
       reconciliationId: data.reconciliationId,
@@ -454,7 +454,7 @@ export async function closeReconciliationPeriodAction(
   reconciliationId: string
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const session = await BankReconciliationService.closePeriod({
       businessId,
       reconciliationId,
@@ -474,7 +474,7 @@ export async function reopenReconciliationPeriodAction(
   reason: string
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const session = await BankReconciliationService.reopenPeriod({
       businessId,
       reconciliationId,
@@ -505,7 +505,7 @@ export async function createPettyCashCountAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const count = await PettyCashService.createCashCount({
       businessId,
       cashAccountId: data.cashAccountId,
@@ -526,7 +526,7 @@ export async function createPettyCashCountAction(
 
 export async function reviewPettyCashCountAction(businessId: string, countId: string) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const count = await PettyCashService.reviewCashCount({
       businessId,
       countId,
@@ -547,7 +547,7 @@ export async function postPettyCashCountAction(
   }
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'treasury', 'write')
     const count = await PettyCashService.postCashCount({
       businessId,
       countId: data.countId,

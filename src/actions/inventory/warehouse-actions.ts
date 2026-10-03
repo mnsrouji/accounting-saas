@@ -83,7 +83,7 @@ export async function updateWarehouseAction(
   input: UpdateWarehouseInput
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'inventory', 'write')
 
     const warehouse = await prisma.warehouse.findFirst({
       where: { id: warehouseId, businessId },
@@ -142,7 +142,7 @@ export async function updateWarehouseAction(
 
 export async function deleteWarehouseAction(businessId: string, warehouseId: string) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'inventory', 'delete')
 
     const warehouse = await prisma.warehouse.findFirst({
       where: { id: warehouseId, businessId },
@@ -210,7 +210,7 @@ export async function toggleWarehouseStatusAction(
   isActive: boolean
 ) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'inventory', 'write')
 
     const updated = await prisma.warehouse.update({
       where: { id: warehouseId, businessId },

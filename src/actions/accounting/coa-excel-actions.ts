@@ -10,7 +10,7 @@ export async function validateChartOfAccountsExcelAction(
   fileBase64: string
 ): Promise<{ success: boolean; data?: ValidationSummary; error?: string }> {
   try {
-    await requireBusinessAccess(businessId)
+    await requireBusinessAccess(businessId, 'accounting', 'read')
 
     const business = await prisma.business.findUnique({
       where: { id: businessId },
@@ -42,7 +42,7 @@ export async function importChartOfAccountsExcelAction(
   mode: 'merge' | 'insert_only'
 ): Promise<{ success: boolean; result?: { created: number; updated: number; skipped: number }; error?: string }> {
   try {
-    await requireBusinessAccess(businessId)
+    await requireBusinessAccess(businessId, 'accounting', 'write')
 
     if (!accountsData || accountsData.length === 0) {
       return {

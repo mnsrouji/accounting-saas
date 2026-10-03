@@ -9,7 +9,7 @@ import { serializeJson } from '@/utils'
 
 export async function postExpenseAction(businessId: string, input: Omit<PostExpenseInput, 'businessId' | 'userId'>) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'expenses', 'write')
 
     const result = await ExpenseService.postExpense({
       ...input,

@@ -3,6 +3,13 @@
 // Multi-Tenant SaaS Accounting & Business Management Platform
 // =============================================================
 
+import {
+  SYSTEM_PERMISSIONS_REGISTRY,
+  ROLE_PRESET_PERMISSIONS,
+  ALL_PERMISSION_CODES,
+  PermissionDefinition,
+} from '@/lib/auth/permissions-registry'
+
 export type PermissionLevel = 'read' | 'write' | 'delete' | 'full'
 
 const LEVEL_WEIGHT: Record<PermissionLevel, number> = {
@@ -38,6 +45,7 @@ const ROLE_MODULE_PERMISSIONS: Record<string, Record<string, PermissionLevel>> =
     quotations: 'write',
     inventory: 'read',
     reports: 'read',
+    treasury: 'read',
   },
   purchase_user: {
     purchases: 'write',
@@ -45,6 +53,7 @@ const ROLE_MODULE_PERMISSIONS: Record<string, Record<string, PermissionLevel>> =
     purchaseOrders: 'write',
     inventory: 'read',
     reports: 'read',
+    treasury: 'read',
   },
   inventory_user: {
     inventory: 'write',
@@ -61,25 +70,50 @@ const ROLE_MODULE_PERMISSIONS: Record<string, Record<string, PermissionLevel>> =
   },
 }
 
-// Permission code mapping to module and level
-const PERMISSION_CODE_MAP: Record<string, { module: string; level: PermissionLevel }> = {
-  'customers.view': { module: 'customers', level: 'read' },
-  'customers.create': { module: 'customers', level: 'write' },
-  'customers.update': { module: 'customers', level: 'write' },
-  'customers.delete': { module: 'customers', level: 'delete' },
-  'sales.view': { module: 'sales', level: 'read' },
-  'sales.create': { module: 'sales', level: 'write' },
-  'sales.update': { module: 'sales', level: 'write' },
-  'sales.delete': { module: 'sales', level: 'delete' },
-  'purchases.view': { module: 'purchases', level: 'read' },
-  'purchases.create': { module: 'purchases', level: 'write' },
-  'inventory.view': { module: 'inventory', level: 'read' },
-  'inventory.adjust': { module: 'inventory', level: 'write' },
-  'accounting.view': { module: 'accounting', level: 'read' },
-  'accounting.post': { module: 'accounting', level: 'write' },
-  'reports.view': { module: 'reports', level: 'read' },
-  'settings.manage': { module: 'settings', level: 'full' },
+/**
+ * Dynamically map all system permissions to their module and level
+ */
+function buildPermissionCodeMap(): Record<string, { module: string; level: PermissionLevel }> {
+  const map: Record<string, { module: string; level: PermissionLevel }> = {}
+
+  for (const group of SYSTEM_PERMISSIONS_REGISTRY) {
+    for (const perm of group.permissions) {
+      let level: PermissionLevel = 'read'
+      if (perm.action === 'view' || perm.action === 'export') {
+        level = 'read'
+      } else if (perm.action === 'delete') {
+        level = 'delete'
+      } else if (perm.action === 'manage') {
+        level = perm.module === 'settings' ? 'full' : 'write'
+      } else {
+        // 'create', 'edit', 'post'
+        level = 'write'
+      }
+
+      map[perm.code] = {
+        module: perm.module,
+        level,
+      }
+    }
+  }
+
+  // Common aliases
+  map['inventory.adjust'] = { module: 'inventory', level: 'write' }
+  map['inventory.manage'] = { module: 'inventory', level: 'write' }
+  map['accounting.chart_manage'] = { module: 'accounting', level: 'write' }
+  map['journal_entries.create'] = { module: 'accounting', level: 'write' }
+  map['journal_entries.post'] = { module: 'accounting', level: 'write' }
+  map['payments.incoming'] = { module: 'treasury', level: 'write' }
+  map['payments.outgoing'] = { module: 'treasury', level: 'write' }
+  map['treasury.transfers'] = { module: 'treasury', level: 'write' }
+  map['treasury.reconcile'] = { module: 'treasury', level: 'write' }
+  map['members.manage'] = { module: 'settings', level: 'full' }
+  map['settings.manage'] = { module: 'settings', level: 'full' }
+
+  return map
 }
+
+const PERMISSION_CODE_MAP = buildPermissionCodeMap()
 
 export class RBACService {
   /**
@@ -100,12 +134,12 @@ export class RBACService {
 
     const requiredWeight = LEVEL_WEIGHT[requiredLevel] || 1
 
-    // 2. Check custom permission overrides attached directly to membership (JSON)
+    // 2. Check custom permission overrides attached directly to membership (JSON or Array)
     if (membership?.permissions) {
       const customPerms = membership.permissions
       if (typeof customPerms === 'object' && customPerms !== null) {
         // e.g. { "accounting": "write" } or { "accounting": true }
-        if (customPerms[module]) {
+        if (customPerms[module] !== undefined) {
           const val = customPerms[module]
           if (typeof val === 'string' && LEVEL_WEIGHT[val as PermissionLevel]) {
             if (LEVEL_WEIGHT[val as PermissionLevel] >= requiredWeight) return true
@@ -115,11 +149,17 @@ export class RBACService {
             return false
           }
         }
+
         // e.g. array of permission codes: ["accounting.post", "sales.create"]
         if (Array.isArray(customPerms)) {
           for (const permCode of customPerms) {
+            if (permCode === '*') return true
             const mapped = PERMISSION_CODE_MAP[permCode]
-            if (mapped && (mapped.module === module || mapped.module === '*') && LEVEL_WEIGHT[mapped.level] >= requiredWeight) {
+            if (
+              mapped &&
+              (mapped.module === module || mapped.module === '*') &&
+              LEVEL_WEIGHT[mapped.level] >= requiredWeight
+            ) {
               return true
             }
           }
@@ -130,17 +170,38 @@ export class RBACService {
     // 3. Check custom DB Role & RolePermissions if linked
     if (membership?.roleModel?.rolePermissions && Array.isArray(membership.roleModel.rolePermissions)) {
       for (const rp of membership.roleModel.rolePermissions) {
-        const code = rp.permission?.code
+        const code = rp.permission?.code || rp.permissionCode
         if (code) {
+          if (code === '*') return true
           const mapped = PERMISSION_CODE_MAP[code]
-          if (mapped && (mapped.module === module || mapped.module === '*') && LEVEL_WEIGHT[mapped.level] >= requiredWeight) {
+          if (
+            mapped &&
+            (mapped.module === module || mapped.module === '*') &&
+            LEVEL_WEIGHT[mapped.level] >= requiredWeight
+          ) {
             return true
           }
         }
       }
     }
 
-    // 4. Check standard matrix for the member's role
+    // 4. Check preset permissions for custom / standard roles from ROLE_PRESET_PERMISSIONS
+    const rolePreset = ROLE_PRESET_PERMISSIONS[roleKey]
+    if (rolePreset && Array.isArray(rolePreset)) {
+      for (const permCode of rolePreset) {
+        if (permCode === '*') return true
+        const mapped = PERMISSION_CODE_MAP[permCode]
+        if (
+          mapped &&
+          (mapped.module === module || mapped.module === '*') &&
+          LEVEL_WEIGHT[mapped.level] >= requiredWeight
+        ) {
+          return true
+        }
+      }
+    }
+
+    // 5. Check standard matrix for the member's role
     const roleMatrix = ROLE_MODULE_PERMISSIONS[roleKey]
     if (!roleMatrix) {
       return false
@@ -162,7 +223,7 @@ export class RBACService {
   }
 
   /**
-   * Check if a member has a specific permission code (e.g. "accounting.post").
+   * Check if a member has a specific permission code (e.g. "accounting.post", "sales.create").
    */
   static hasPermission(membership: any, permissionCode: string): boolean {
     const roleKey = (membership?.role || '').toLowerCase()
@@ -170,26 +231,42 @@ export class RBACService {
       return true
     }
 
+    // 1. Direct check in custom JSON permissions on membership
+    if (membership?.permissions) {
+      const p = membership.permissions
+      if (Array.isArray(p)) {
+        if (p.includes('*') || p.includes(permissionCode)) return true
+      } else if (typeof p === 'object' && p !== null) {
+        if (p['*'] === true || p[permissionCode] === true) return true
+      }
+    }
+
+    // 2. Direct check in DB role permissions
+    if (membership?.roleModel?.rolePermissions && Array.isArray(membership.roleModel.rolePermissions)) {
+      const match = membership.roleModel.rolePermissions.some(
+        (rp: any) => {
+          const code = rp.permission?.code || rp.permissionCode
+          return code === '*' || code === permissionCode
+        }
+      )
+      if (match) return true
+    }
+
+    // 3. Direct check in standard preset for role
+    const rolePreset = ROLE_PRESET_PERMISSIONS[roleKey]
+    if (rolePreset && Array.isArray(rolePreset)) {
+      if (rolePreset.includes('*') || rolePreset.includes(permissionCode)) {
+        return true
+      }
+    }
+
+    // 4. Fallback check via module access level
     const mapped = PERMISSION_CODE_MAP[permissionCode]
     if (mapped) {
       return this.hasModuleAccess(roleKey, mapped.module, mapped.level, membership)
     }
 
-    // Direct check in DB role permissions
-    if (membership?.roleModel?.rolePermissions && Array.isArray(membership.roleModel.rolePermissions)) {
-      const match = membership.roleModel.rolePermissions.some(
-        (rp: any) => rp.permission?.code === permissionCode
-      )
-      if (match) return true
-    }
-
-    // Direct check in custom JSON permissions
-    if (membership?.permissions) {
-      const p = membership.permissions
-      if (Array.isArray(p) && p.includes(permissionCode)) return true
-      if (typeof p === 'object' && p !== null && p[permissionCode] === true) return true
-    }
-
     return false
   }
 }
+

@@ -15,7 +15,7 @@ export async function validateOpeningInventoryExcelAction(
   fileBase64: string
 ): Promise<{ success: boolean; data?: OpeningStockValidationSummary; error?: string }> {
   try {
-    await requireBusinessAccess(businessId)
+    await requireBusinessAccess(businessId, 'inventory', 'read')
 
     const business = await prisma.business.findUnique({
       where: { id: businessId },
@@ -57,7 +57,7 @@ export async function importOpeningInventoryAction(
   error?: string
 }> {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'inventory', 'write')
 
     if (!rows || rows.length === 0) {
       return {

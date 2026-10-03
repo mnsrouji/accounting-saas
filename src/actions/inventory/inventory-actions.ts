@@ -10,7 +10,7 @@ import { serializeJson } from '@/utils'
 
 export async function adjustStockAction(businessId: string, input: Omit<InventoryAdjustmentInput, 'businessId' | 'userId'>) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'inventory', 'write')
 
     const movement = await InventoryService.adjustStock({
       ...input,
@@ -35,7 +35,7 @@ function safeRevalidatePath(path: string) {
 
 export async function transferStockAction(businessId: string, input: Omit<WarehouseTransferInput, 'businessId' | 'userId'>) {
   try {
-    const { userId } = await requireBusinessAccess(businessId)
+    const { userId } = await requireBusinessAccess(businessId, 'inventory', 'write')
 
     const result = await InventoryService.executeTransfer({
       ...input,
