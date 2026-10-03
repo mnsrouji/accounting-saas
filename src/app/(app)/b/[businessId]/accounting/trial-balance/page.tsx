@@ -7,6 +7,7 @@ import { ArrowLeft, CheckCircle, AlertTriangle } from 'lucide-react'
 import { TrialBalanceFilter } from './TrialBalanceFilter'
 import { formatCurrency, formatDate } from '@/utils/decimal'
 import { AccountingHealthModal } from '@/components/accounting/AccountingHealthModal'
+import { getLocalizedAccountName, getLocalizedAccountType } from '@/lib/i18n/account-i18n'
 
 export const metadata: Metadata = {
   title: 'Trial Balance | AccountFlow',
@@ -102,9 +103,9 @@ export default async function TrialBalancePage({ params, searchParams }: PagePro
                 return (
                   <tr key={acc.accountId} style={{ borderBottom: '1px solid var(--border-color)' }}>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', fontWeight: 600 }}>{acc.code}</td>
-                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>{acc.name}</td>
+                    <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>{getLocalizedAccountName(acc.code, acc.name, locale)}</td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.75rem' }}>
-                      <span className="badge badge-secondary">{acc.type}</span>
+                      <span className="badge badge-secondary">{getLocalizedAccountType(acc.type, locale)}</span>
                     </td>
                     <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem', textAlign: 'right', fontWeight: acc.netDebit > 0 ? 600 : 400 }}>
                       {acc.netDebit > 0 ? formatCurrency(acc.netDebit, business.defaultCurrency) : '—'}

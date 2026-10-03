@@ -4,6 +4,7 @@ import React from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import { Filter } from 'lucide-react'
 import { useLocale } from 'next-intl'
+import { getLocalizedAccountName, getLocalizedAccountType } from '@/lib/i18n/account-i18n'
 
 interface AccountOption {
   id: string
@@ -66,7 +67,7 @@ export function LedgerFilter({
           >
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.code} - {a.name} ({a.type.toUpperCase()})
+                {a.code} - {getLocalizedAccountName(a.code, a.name, locale)} ({getLocalizedAccountType(a.type, locale)})
               </option>
             ))}
           </select>

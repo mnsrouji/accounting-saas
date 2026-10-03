@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { formatCurrency, formatDate } from '@/utils/decimal'
 import { AccountingHealthModal } from '@/components/accounting/AccountingHealthModal'
+import { getLocalizedAccountName } from '@/lib/i18n/account-i18n'
 
 interface LineItem {
   accountId: string
@@ -711,7 +712,7 @@ export function BalanceSheetReportClient({
                 </tr>
                 {data.assets.current.items.map((item) => (
                   <tr key={item.accountId} className="item-row">
-                    <td style={{ paddingInlineStart: '1rem' }}>{item.name}</td>
+                    <td style={{ paddingInlineStart: '1rem' }}>{getLocalizedAccountName(item.code, item.name, locale)}</td>
                     <td style={{ textAlign: isAr ? 'left' : 'right' }}>{fmt(item.amount)}</td>
                   </tr>
                 ))}
@@ -731,7 +732,7 @@ export function BalanceSheetReportClient({
                 </tr>
                 {data.assets.nonCurrent.items.map((item) => (
                   <tr key={item.accountId} className="item-row">
-                    <td style={{ paddingInlineStart: '1rem' }}>{item.name}</td>
+                    <td style={{ paddingInlineStart: '1rem' }}>{getLocalizedAccountName(item.code, item.name, locale)}</td>
                     <td style={{ textAlign: isAr ? 'left' : 'right' }}>
                       {item.amount < 0 ? `(${fmt(Math.abs(item.amount))})` : fmt(item.amount)}
                     </td>
@@ -779,7 +780,7 @@ export function BalanceSheetReportClient({
                 </tr>
                 {data.liabilities.current.items.map((item) => (
                   <tr key={item.accountId} className="item-row">
-                    <td style={{ paddingInlineStart: '1rem' }}>{item.name}</td>
+                    <td style={{ paddingInlineStart: '1rem' }}>{getLocalizedAccountName(item.code, item.name, locale)}</td>
                     <td style={{ textAlign: isAr ? 'left' : 'right' }}>{fmt(item.amount)}</td>
                   </tr>
                 ))}
@@ -799,7 +800,7 @@ export function BalanceSheetReportClient({
                 </tr>
                 {data.liabilities.nonCurrent.items.map((item) => (
                   <tr key={item.accountId} className="item-row">
-                    <td style={{ paddingInlineStart: '1rem' }}>{item.name}</td>
+                    <td style={{ paddingInlineStart: '1rem' }}>{getLocalizedAccountName(item.code, item.name, locale)}</td>
                     <td style={{ textAlign: isAr ? 'left' : 'right' }}>{fmt(item.amount)}</td>
                   </tr>
                 ))}
@@ -819,7 +820,7 @@ export function BalanceSheetReportClient({
                 </tr>
                 {data.equity.items.map((item) => (
                   <tr key={item.accountId} className="item-row">
-                    <td style={{ paddingInlineStart: '1rem' }}>{item.name}</td>
+                    <td style={{ paddingInlineStart: '1rem' }}>{getLocalizedAccountName(item.code, item.name, locale)}</td>
                     <td style={{ textAlign: isAr ? 'left' : 'right' }}>{fmt(item.amount)}</td>
                   </tr>
                 ))}

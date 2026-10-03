@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
 import { LedgerFilter } from './LedgerFilter'
 import { formatCurrency, formatDate } from '@/utils/decimal'
+import { getLocalizedAccountName, getLocalizedAccountType, getLocalizedNormalBalance } from '@/lib/i18n/account-i18n'
 
 export const metadata: Metadata = {
   title: 'General Ledger | AccountFlow',
@@ -112,10 +113,10 @@ export default async function GeneralLedgerPage({ params, searchParams }: PagePr
           >
             <div>
               <span className="card-title">
-                {ledgerResult.account.code} - {ledgerResult.account.name}
+                {ledgerResult.account.code} - {getLocalizedAccountName(ledgerResult.account.code, ledgerResult.account.name, locale)}
               </span>
               <span className="badge badge-primary" style={{ marginInlineStart: '0.5rem' }}>
-                {ledgerResult.account.type.toUpperCase()} ({ledgerResult.account.normalBalance} {t.normal})
+                {getLocalizedAccountType(ledgerResult.account.type, locale)} ({getLocalizedNormalBalance(ledgerResult.account.normalBalance, locale)})
               </span>
             </div>
             <div style={{ fontSize: '0.875rem', fontWeight: 700 }}>

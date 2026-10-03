@@ -6,6 +6,7 @@ import { getLocale } from 'next-intl/server'
 import Link from 'next/link'
 import { TrendingUp, TrendingDown, ChevronRight } from 'lucide-react'
 import { PrintButton } from '@/components/reports/print-button'
+import { getLocalizedAccountName } from '@/lib/i18n/account-i18n'
 
 export const metadata: Metadata = {
   title: 'Profit & Loss | AccountFlow',
@@ -165,7 +166,7 @@ export default async function ProfitAndLossPage({ params, searchParams }: PagePr
             {/* Revenue */}
             <SectionHeader label={isAr ? 'الإيرادات والمبيعات' : isTr ? 'GELİRLER' : 'REVENUE'} />
             {pl.revenue.items.map((item) => (
-              <AccountRow key={item.accountId} code={item.code} name={item.name} amount={item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
+              <AccountRow key={item.accountId} code={item.code} name={getLocalizedAccountName(item.code, item.name, locale)} amount={item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
             ))}
             {pl.revenue.items.length === 0 && <EmptyRow label={isAr ? 'لا توجد حركات في حسابات الإيرادات' : isTr ? 'Hareket gören gelir hesabı yok' : 'No revenue accounts with activity'} />}
             <SubtotalRow label={isAr ? 'إجمالي الإيرادات' : isTr ? 'Toplam Gelir' : 'Total Revenue'} amount={pl.revenue.total} currency={currency} base={pl.revenue.total} color="var(--color-brand-500)" isAr={isAr} />
@@ -173,7 +174,7 @@ export default async function ProfitAndLossPage({ params, searchParams }: PagePr
             {/* COGS */}
             <SectionHeader label={isAr ? 'تكلفة المبيعات والبضاعة المباعة' : isTr ? 'SATIŞLARIN MALİYETİ' : 'COST OF SALES'} />
             {pl.costOfSales.items.map((item) => (
-              <AccountRow key={item.accountId} code={item.code} name={item.name} amount={item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
+              <AccountRow key={item.accountId} code={item.code} name={getLocalizedAccountName(item.code, item.name, locale)} amount={item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
             ))}
             {pl.costOfSales.items.length === 0 && <EmptyRow label={isAr ? 'لا توجد حركات في حسابات تكلفة المبيعات' : isTr ? 'Hareket gören maliyet hesabı yok' : 'No COGS accounts with activity'} />}
             <SubtotalRow label={isAr ? 'إجمالي تكلفة المبيعات' : isTr ? 'Toplam Satış Maliyeti' : 'Total Cost of Sales'} amount={pl.costOfSales.total} currency={currency} base={pl.revenue.total} color="var(--color-warning)" isAr={isAr} />
@@ -184,7 +185,7 @@ export default async function ProfitAndLossPage({ params, searchParams }: PagePr
             {/* Operating Expenses */}
             <SectionHeader label={isAr ? 'المصروفات التشغيلية والعمومية' : isTr ? 'FAALİYET GİDERLERİ' : 'OPERATING EXPENSES'} />
             {pl.operatingExpenses.items.map((item) => (
-              <AccountRow key={item.accountId} code={item.code} name={item.name} amount={item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
+              <AccountRow key={item.accountId} code={item.code} name={getLocalizedAccountName(item.code, item.name, locale)} amount={item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
             ))}
             {pl.operatingExpenses.items.length === 0 && <EmptyRow label={isAr ? 'لا توجد حركات في حسابات المصروفات التشغيلية' : isTr ? 'Hareket gören faaliyet gider hesabı yok' : 'No operating expense accounts with activity'} />}
             <SubtotalRow label={isAr ? 'إجمالي المصروفات التشغيلية' : isTr ? 'Toplam Faaliyet Giderleri' : 'Total Operating Expenses'} amount={pl.operatingExpenses.total} currency={currency} base={pl.revenue.total} color="var(--color-danger)" isAr={isAr} />
@@ -197,10 +198,10 @@ export default async function ProfitAndLossPage({ params, searchParams }: PagePr
               <>
                 <SectionHeader label={isAr ? 'الإيرادات والمصروفات الأخرى' : isTr ? 'DİĞER GELİR VE GİDERLER' : 'OTHER INCOME / EXPENSES'} />
                 {pl.otherIncome.items.map((item) => (
-                  <AccountRow key={item.accountId} code={item.code} name={item.name} amount={item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
+                  <AccountRow key={item.accountId} code={item.code} name={getLocalizedAccountName(item.code, item.name, locale)} amount={item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
                 ))}
                 {pl.otherExpenses.items.map((item) => (
-                  <AccountRow key={item.accountId} code={item.code} name={`(${item.name})`} amount={-item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
+                  <AccountRow key={item.accountId} code={item.code} name={`(${getLocalizedAccountName(item.code, item.name, locale)})`} amount={-item.amount} currency={currency} base={pl.revenue.total} isAr={isAr} indent />
                 ))}
                 <SubtotalRow
                   label={isAr ? 'صافي الإيرادات / (المصروفات) الأخرى' : isTr ? 'Net Diğer Gelir / (Gider)' : 'Net Other Income / (Expenses)'}

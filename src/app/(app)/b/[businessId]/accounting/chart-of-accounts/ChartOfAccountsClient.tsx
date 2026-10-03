@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { Modal } from '@/components/ui/Modal'
 import { ChartOfAccountsExcelModal } from '@/components/accounting/ChartOfAccountsExcelModal'
 import { AccountSearchSelect } from '@/components/accounting/AccountSearchSelect'
+import { getLocalizedAccountName, getLocalizedAccountDescription } from '@/lib/i18n/account-i18n'
 import {
   createChartOfAccountAction,
   updateChartOfAccountAction,
@@ -349,16 +350,20 @@ export function ChartOfAccountsClient({
   // Filtered Accounts
   const filteredAccounts = useMemo(() => {
     return accounts.filter((acc) => {
+      const localizedName = getLocalizedAccountName(acc, locale)
+      const q = searchQuery.toLowerCase().trim()
       const matchesSearch =
-        acc.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (acc.description && acc.description.toLowerCase().includes(searchQuery.toLowerCase()))
+        !q ||
+        acc.code.toLowerCase().includes(q) ||
+        acc.name.toLowerCase().includes(q) ||
+        localizedName.toLowerCase().includes(q) ||
+        (acc.description && acc.description.toLowerCase().includes(q))
 
       const matchesType = selectedTypeFilter === 'all' || acc.type === selectedTypeFilter
 
       return matchesSearch && matchesType
     })
-  }, [accounts, searchQuery, selectedTypeFilter])
+  }, [accounts, searchQuery, selectedTypeFilter, locale])
 
   // Potential Parent Accounts for currently selected type
   const t = {
@@ -601,7 +606,7 @@ export function ChartOfAccountsClient({
                           <td style={{ padding: '0.75rem 1rem', fontSize: '0.875rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                               <span style={{ fontWeight: acc.isHeader ? 700 : 500, color: '#0f172a' }}>
-                                {acc.name}
+                                {getLocalizedAccountName(acc, locale)}
                               </span>
                               {acc.isHeader && (
                                 <span className="badge badge-primary" style={{ fontSize: '0.6875rem', padding: '0.1rem 0.4rem' }}>
@@ -614,9 +619,9 @@ export function ChartOfAccountsClient({
                                 </span>
                               )}
                             </div>
-                            {acc.description && (
+                            {(getLocalizedAccountDescription(acc, locale) || acc.description) && (
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                {acc.description}
+                                {getLocalizedAccountDescription(acc, locale) || acc.description}
                               </div>
                             )}
                           </td>

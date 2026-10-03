@@ -2,6 +2,8 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { Search, ChevronDown, Check, X, Building2, Tag } from 'lucide-react'
+import { useLocale } from 'next-intl'
+import { getLocalizedAccountName, getLocalizedAccountType } from '@/lib/i18n/account-i18n'
 
 export interface SearchableAccountItem {
   id: string
@@ -27,19 +29,11 @@ interface AccountSearchSelectProps {
   id?: string
 }
 
-const TYPE_TRANSLATIONS: Record<string, { label: string; color: string; bg: string }> = {
-  asset: { label: 'أصول (Asset)', color: '#2563eb', bg: 'rgba(37, 99, 235, 0.08)' },
-  liability: { label: 'خصوم (Liability)', color: '#d97706', bg: 'rgba(217, 119, 6, 0.08)' },
-  equity: { label: 'حقوق ملكية (Equity)', color: '#7c3aed', bg: 'rgba(124, 58, 237, 0.08)' },
-  revenue: { label: 'إيرادات (Revenue)', color: '#059669', bg: 'rgba(5, 150, 105, 0.08)' },
-  expense: { label: 'مصروفات (Expense)', color: '#dc2626', bg: 'rgba(220, 38, 38, 0.08)' },
-}
-
 export function AccountSearchSelect({
   accounts,
   value,
   onChange,
-  placeholder = '-- ابحث بكود أو اسم الحساب --',
+  placeholder,
   disabled = false,
   required = false,
   allowHeaders = true,
@@ -47,6 +41,18 @@ export function AccountSearchSelect({
   className = '',
   id,
 }: AccountSearchSelectProps) {
+  const locale = useLocale()
+  const isAr = locale === 'ar'
+  const isTr = locale === 'tr'
+
+  const defaultPlaceholder = isAr
+    ? '-- ابحث بكود أو اسم الحساب --'
+    : isTr
+    ? '-- Kod veya hesap adı ile ara --'
+    : '-- Search by code or account name --'
+
+  const effectivePlaceholder = placeholder || defaultPlaceholder
+
   const [isOpen, setIsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [highlightedIndex, setHighlightedIndex] = useState(0)
@@ -66,13 +72,14 @@ export function AccountSearchSelect({
     if (!q) return accounts
 
     return accounts.filter((acc) => {
+      const locName = getLocalizedAccountName(acc, locale)
       const matchCode = acc.code.toLowerCase().includes(q)
-      const matchName = acc.name.toLowerCase().includes(q)
+      const matchName = acc.name.toLowerCase().includes(q) || locName.toLowerCase().includes(q)
       const matchType = acc.type?.toLowerCase().includes(q)
       const matchDesc = acc.description?.toLowerCase().includes(q)
       return matchCode || matchName || matchType || matchDesc
     })
-  }, [accounts, searchQuery])
+  }, [accounts, searchQuery, locale])
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -213,7 +220,7 @@ export function AccountSearchSelect({
                 {selectedAccount.code}
               </span>
               <span style={{ fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {selectedAccount.name}
+                {getLocalizedAccountName(selectedAccount, locale)}
               </span>
               {selectedAccount.isHeader && (
                 <span
@@ -226,12 +233,12 @@ export function AccountSearchSelect({
                     flexShrink: 0,
                   }}
                 >
-                  رئيسي
+                  {isAr ? 'رئيسي' : isTr ? 'Ana Hesap' : 'Header'}
                 </span>
               )}
             </div>
           ) : (
-            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{placeholder}</span>
+            <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{effectivePlaceholder}</span>
           )}
         </div>
 
@@ -362,7 +369,6 @@ export function AccountSearchSelect({
               filteredAccounts.map((acc, index) => {
                 const isSelected = acc.id === value
                 const isHighlighted = index === highlightedIndex
-                const typeConfig = acc.type ? TYPE_TRANSLATIONS[acc.type] : null
 
                 return (
                   <div
@@ -412,7 +418,7 @@ export function AccountSearchSelect({
                             whiteSpace: 'nowrap',
                           }}
                         >
-                          {acc.name}
+                          {getLocalizedAccountName(acc, locale)}
                         </span>
                         {acc.description && (
                           <span
@@ -431,18 +437,18 @@ export function AccountSearchSelect({
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', flexShrink: 0 }}>
-                      {typeConfig && (
+                      {acc.type && (
                         <span
                           style={{
                             fontSize: '0.675rem',
                             padding: '0.1rem 0.35rem',
                             borderRadius: '4px',
-                            color: typeConfig.color,
-                            backgroundColor: typeConfig.bg,
+                            color: 'var(--primary-color)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.08)',
                             fontWeight: 500,
                           }}
                         >
-                          {typeConfig.label.split(' ')[0]}
+                          {getLocalizedAccountType(acc.type, locale)}
                         </span>
                       )}
                       {acc.isHeader && (
@@ -451,11 +457,11 @@ export function AccountSearchSelect({
                             fontSize: '0.65rem',
                             padding: '0.05rem 0.25rem',
                             borderRadius: '4px',
-                            backgroundColor: 'rgba(100, 116, 139, 0.1)',
+                            backgroundColor: 'rgba(100, 116, 139, 0.12)',
                             color: 'var(--text-muted)',
                           }}
                         >
-                          رئيسي
+                          {isAr ? 'رئيسي' : isTr ? 'Ana' : 'Header'}
                         </span>
                       )}
                       {isSelected && <Check size={14} style={{ color: 'var(--primary-color)', marginInlineStart: '0.25rem' }} />}
