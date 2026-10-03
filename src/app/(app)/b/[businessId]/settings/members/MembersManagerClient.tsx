@@ -6,7 +6,8 @@
 
 'use client'
 
-import React, { useState, useTransition, useMemo } from 'react'
+import React, { useState, useEffect, useTransition, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import {
   createDirectUserAction,
   updateMemberCustomPermissionsAction,
@@ -55,6 +56,7 @@ import {
   List,
   Sparkles,
   HelpCircle,
+  LayoutGrid,
 } from 'lucide-react'
 
 export interface MemberRow {
@@ -145,6 +147,11 @@ export default function MembersManagerClient({
   const [resetPasswordValue, setResetPasswordValue] = useState('')
   const [showResetPassword, setShowResetPassword] = useState(false)
   const [copiedNotification, setCopiedNotification] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const t = {
     teamMembers: isAr ? 'المستخدمون وفريق العمل' : isTr ? 'Ekip Üyeleri ve Kullanıcılar' : 'Team Members & Users',
@@ -167,8 +174,8 @@ export default function MembersManagerClient({
     allPermissions: isAr ? 'صلاحيات كاملة' : isTr ? 'Tam Yetkili' : 'Full Access',
     customCount: (count: number) => isAr ? `${count} صلاحية مفعلة` : isTr ? `${count} özel izin` : `${count} custom perms`,
     allModules: isAr ? 'كافة الوحدات والأنظمة' : isTr ? 'Tüm Modüller' : 'All Modules',
-    viewMatrixMode: isAr ? 'مصفوفة جدولية سريعة' : isTr ? 'Matris Tablosu' : 'Matrix Grid',
-    viewDetailedMode: isAr ? 'قائمة تفصيلية' : isTr ? 'Ayrıntılı Liste' : 'Detailed List',
+    viewMatrixMode: isAr ? '📊 مصفوفة جدولية سريعة' : isTr ? '📊 Matris Tablosu' : '📊 Matrix Grid',
+    viewDetailedMode: isAr ? '📑 قائمة تفصيلية' : isTr ? '📑 Ayrıntılı Liste' : '📑 Detailed List',
     roles: {
       owner: isAr ? 'مالك المنشأة (Owner)' : isTr ? 'Kurucu / Sahip' : 'Owner',
       administrator: isAr ? 'مدير نظام (Admin)' : isTr ? 'Yönetici (Admin)' : 'Administrator',
@@ -866,28 +873,28 @@ export default function MembersManagerClient({
       {/* ========================================================= */}
       {/* MODAL 1: DIRECT USER CREATION MODAL                       */}
       {/* ========================================================= */}
-      {isAddUserModalOpen && (
+      {mounted && isAddUserModalOpen && createPortal(
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 9999,
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(4px)',
+            zIndex: 999999,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '1rem',
+            padding: '1.5rem',
           }}
         >
           <div
             style={{
               width: '100%',
               maxWidth: '680px',
-              maxHeight: '90vh',
+              maxHeight: 'calc(100vh - 3rem)',
               backgroundColor: 'var(--bg-surface, #ffffff)',
               borderRadius: '16px',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
@@ -903,13 +910,14 @@ export default function MembersManagerClient({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 background: 'var(--bg-page)',
+                flexShrink: 0,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <div
                   style={{
-                    width: 36,
-                    height: 36,
+                    width: 38,
+                    height: 38,
                     borderRadius: '8px',
                     background: 'rgba(99, 102, 241, 0.1)',
                     color: 'var(--color-brand-500)',
@@ -1044,6 +1052,7 @@ export default function MembersManagerClient({
                   alignItems: 'center',
                   justifyContent: 'flex-end',
                   gap: '0.75rem',
+                  flexShrink: 0,
                 }}
               >
                 <button
@@ -1066,34 +1075,42 @@ export default function MembersManagerClient({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================= */}
       {/* MODAL 2: DUAL-VIEW CUSTOM PERMISSIONS MANAGER MODAL       */}
       {/* ========================================================= */}
-      {editingMember && (
+      {mounted && editingMember && createPortal(
         <div
           style={{
             position: 'fixed',
-            inset: 0,
-            zIndex: 9999,
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(4px)',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 999999,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             padding: '1rem',
+            overflow: 'hidden',
           }}
         >
           <div
             style={{
               width: '100%',
-              maxWidth: '1080px',
-              height: '90vh',
+              maxWidth: '1120px',
+              height: 'calc(100vh - 2.5rem)',
+              maxHeight: '92vh',
               backgroundColor: 'var(--bg-surface, #ffffff)',
               borderRadius: '16px',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
               display: 'flex',
               flexDirection: 'column',
               overflow: 'hidden',
@@ -1109,6 +1126,7 @@ export default function MembersManagerClient({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 background: 'var(--bg-page)',
+                flexShrink: 0,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
@@ -1125,16 +1143,17 @@ export default function MembersManagerClient({
                     fontWeight: 700,
                     fontSize: '1.125rem',
                     boxShadow: '0 4px 10px rgba(99, 102, 241, 0.25)',
+                    flexShrink: 0,
                   }}
                 >
                   <Sliders size={22} />
                 </div>
                 <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
                     <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 800 }}>
                       {isAr ? `تخصيص صلاحيات المستخدم: ${editingMember.user.fullName}` : `Manage Permissions: ${editingMember.user.fullName}`}
                     </h3>
-                    <span className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
+                    <span className="badge badge-primary" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
                       {editSelectedPermissions.length} / {ALL_PERMISSION_CODES.length} {isAr ? 'صلاحية مفعلة' : 'active'}
                     </span>
                   </div>
@@ -1145,14 +1164,16 @@ export default function MembersManagerClient({
               </div>
 
               {/* View Switcher Toggle & Close Button */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                {/* Visual View Switcher */}
                 <div
                   style={{
                     display: 'flex',
-                    background: 'var(--bg-surface)',
-                    padding: '0.2rem',
+                    background: 'var(--bg-surface, #ffffff)',
+                    padding: '0.25rem',
                     borderRadius: '8px',
                     border: '1px solid var(--border-color)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
                   }}
                 >
                   <button
@@ -1161,7 +1182,8 @@ export default function MembersManagerClient({
                     className={`btn btn-sm ${permModalMode === 'matrix' ? 'btn-primary' : 'btn-secondary'}`}
                     style={{
                       fontSize: '0.75rem',
-                      padding: '0.25rem 0.6rem',
+                      fontWeight: 700,
+                      padding: '0.35rem 0.75rem',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.35rem',
@@ -1177,7 +1199,8 @@ export default function MembersManagerClient({
                     className={`btn btn-sm ${permModalMode === 'detailed' ? 'btn-primary' : 'btn-secondary'}`}
                     style={{
                       fontSize: '0.75rem',
-                      padding: '0.25rem 0.6rem',
+                      fontWeight: 700,
+                      padding: '0.35rem 0.75rem',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '0.35rem',
@@ -1193,14 +1216,14 @@ export default function MembersManagerClient({
                   type="button"
                   onClick={() => setEditingMember(null)}
                   className="btn btn-secondary btn-sm"
-                  style={{ width: 34, height: 34, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                  style={{ width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   <X size={18} />
                 </button>
               </div>
             </div>
 
-            {/* Top Toolbar: Quick Presets & Search */}
+            {/* Top Toolbar: Quick Presets, View Mode & Search */}
             <div
               style={{
                 padding: '0.75rem 1.5rem',
@@ -1211,11 +1234,12 @@ export default function MembersManagerClient({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 gap: '0.75rem',
+                flexShrink: 0,
               }}
             >
               {/* Role Presets */}
               <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.375rem' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginInlineEnd: '0.25rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', marginInlineEnd: '0.25rem' }}>
                   {isAr ? 'قوالب سريعة:' : 'Presets:'}
                 </span>
                 {(['accountant', 'sales_user', 'purchase_user', 'inventory_user', 'viewer'] as MemberRole[]).map((r) => (
@@ -1227,7 +1251,7 @@ export default function MembersManagerClient({
                       setEditSelectedPermissions([...(ROLE_PRESET_PERMISSIONS[r] || [])])
                     }}
                     className={`btn btn-sm ${editPermissionsRole === r ? 'btn-primary' : 'btn-secondary'}`}
-                    style={{ fontSize: '0.725rem', padding: '0.2rem 0.5rem', borderRadius: '6px' }}
+                    style={{ fontSize: '0.725rem', padding: '0.25rem 0.55rem', borderRadius: '6px', fontWeight: 600 }}
                   >
                     {t.roles[r] || r}
                   </button>
@@ -1236,45 +1260,92 @@ export default function MembersManagerClient({
                   type="button"
                   onClick={() => setEditSelectedPermissions([...ALL_PERMISSION_CODES])}
                   className="btn btn-secondary btn-sm"
-                  style={{ fontSize: '0.725rem', padding: '0.2rem 0.5rem', borderRadius: '6px', color: '#10b981' }}
+                  style={{ fontSize: '0.725rem', padding: '0.25rem 0.55rem', borderRadius: '6px', color: '#10b981', fontWeight: 700 }}
                 >
-                  <Check size={12} style={{ marginInlineEnd: '0.2rem' }} />
+                  <Check size={13} style={{ marginInlineEnd: '0.2rem' }} />
                   {isAr ? 'تحديد الكل' : 'Select All'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setEditSelectedPermissions([])}
                   className="btn btn-secondary btn-sm"
-                  style={{ fontSize: '0.725rem', padding: '0.2rem 0.5rem', borderRadius: '6px', color: '#ef4444' }}
+                  style={{ fontSize: '0.725rem', padding: '0.25rem 0.55rem', borderRadius: '6px', color: '#ef4444', fontWeight: 700 }}
                 >
                   {isAr ? 'إلغاء الكل' : 'Clear All'}
                 </button>
               </div>
 
-              {/* Perm Search */}
-              <div style={{ position: 'relative', width: '220px' }}>
-                <Search
-                  size={14}
+              {/* View Switcher In Toolbar (Guarantees 100% visibility) & Search */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div
                   style={{
-                    position: 'absolute',
-                    [isAr ? 'right' : 'left']: '0.625rem',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    color: 'var(--text-muted)',
+                    display: 'flex',
+                    background: 'var(--bg-page)',
+                    padding: '0.2rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
                   }}
-                />
-                <input
-                  type="text"
-                  value={permSearchQuery}
-                  onChange={(e) => setPermSearchQuery(e.target.value)}
-                  placeholder={isAr ? 'تصفية الصلاحيات...' : 'Filter permissions...'}
-                  className="form-control"
-                  style={{
-                    [isAr ? 'paddingRight' : 'paddingLeft']: '2rem',
-                    height: '32px',
-                    fontSize: '0.75rem',
-                  }}
-                />
+                >
+                  <button
+                    type="button"
+                    onClick={() => setPermModalMode('matrix')}
+                    className={`btn btn-sm ${permModalMode === 'matrix' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.25rem 0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      borderRadius: '5px',
+                    }}
+                  >
+                    <Table size={13} />
+                    <span>{isAr ? 'مصفوفة' : 'Matrix'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPermModalMode('detailed')}
+                    className={`btn btn-sm ${permModalMode === 'detailed' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.25rem 0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      borderRadius: '5px',
+                    }}
+                  >
+                    <List size={13} />
+                    <span>{isAr ? 'تفصيلي' : 'Detailed'}</span>
+                  </button>
+                </div>
+
+                <div style={{ position: 'relative', width: '220px' }}>
+                  <Search
+                    size={14}
+                    style={{
+                      position: 'absolute',
+                      [isAr ? 'right' : 'left']: '0.625rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: 'var(--text-muted)',
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={permSearchQuery}
+                    onChange={(e) => setPermSearchQuery(e.target.value)}
+                    placeholder={isAr ? 'تصفية الصلاحيات...' : 'Filter permissions...'}
+                    className="form-control"
+                    style={{
+                      [isAr ? 'paddingRight' : 'paddingLeft']: '2rem',
+                      height: '34px',
+                      fontSize: '0.75rem',
+                    }}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1295,7 +1366,7 @@ export default function MembersManagerClient({
                               <button
                                 type="button"
                                 onClick={() => toggleActionAcrossSystem('view', editSelectedPermissions, setEditSelectedPermissions)}
-                                style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                                style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
                               >
                                 {isAr ? 'تحديد' : 'Toggle'}
                               </button>
@@ -1307,7 +1378,7 @@ export default function MembersManagerClient({
                               <button
                                 type="button"
                                 onClick={() => toggleActionAcrossSystem('create', editSelectedPermissions, setEditSelectedPermissions)}
-                                style={{ background: 'none', border: 'none', color: '#059669', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                                style={{ background: 'none', border: 'none', color: '#059669', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
                               >
                                 {isAr ? 'تحديد' : 'Toggle'}
                               </button>
@@ -1319,7 +1390,7 @@ export default function MembersManagerClient({
                               <button
                                 type="button"
                                 onClick={() => toggleActionAcrossSystem('edit', editSelectedPermissions, setEditSelectedPermissions)}
-                                style={{ background: 'none', border: 'none', color: '#d97706', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                                style={{ background: 'none', border: 'none', color: '#d97706', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
                               >
                                 {isAr ? 'تحديد' : 'Toggle'}
                               </button>
@@ -1331,7 +1402,7 @@ export default function MembersManagerClient({
                               <button
                                 type="button"
                                 onClick={() => toggleActionAcrossSystem('delete', editSelectedPermissions, setEditSelectedPermissions)}
-                                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
                               >
                                 {isAr ? 'تحديد' : 'Toggle'}
                               </button>
@@ -1348,7 +1419,7 @@ export default function MembersManagerClient({
                               <button
                                 type="button"
                                 onClick={() => toggleActionAcrossSystem('export', editSelectedPermissions, setEditSelectedPermissions)}
-                                style={{ background: 'none', border: 'none', color: '#0891b2', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline' }}
+                                style={{ background: 'none', border: 'none', color: '#0891b2', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
                               >
                                 {isAr ? 'تحديد' : 'Toggle'}
                               </button>
@@ -1867,13 +1938,14 @@ export default function MembersManagerClient({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
+                flexShrink: 0,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                   {isAr ? 'الإجمالي المعتمد:' : 'Total Configured:'}
                 </span>
-                <span className="badge badge-primary" style={{ fontSize: '0.8125rem', padding: '0.3rem 0.6rem' }}>
+                <span className="badge badge-primary" style={{ fontSize: '0.8125rem', padding: '0.3rem 0.6rem', fontWeight: 700 }}>
                   {editSelectedPermissions.length} من {ALL_PERMISSION_CODES.length} {isAr ? 'صلاحية' : 'permissions'}
                 </span>
               </div>
@@ -1900,24 +1972,25 @@ export default function MembersManagerClient({
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ========================================================= */}
       {/* MODAL 3: DIRECT RESET PASSWORD MODAL                      */}
       {/* ========================================================= */}
-      {resettingMember && (
+      {mounted && resettingMember && createPortal(
         <div
           style={{
             position: 'fixed',
             inset: 0,
-            zIndex: 9999,
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(4px)',
+            zIndex: 999999,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(6px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '1rem',
+            padding: '1.5rem',
           }}
         >
           <div
@@ -1926,7 +1999,7 @@ export default function MembersManagerClient({
               maxWidth: '480px',
               backgroundColor: 'var(--bg-surface, #ffffff)',
               borderRadius: '16px',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
               overflow: 'hidden',
               border: '1px solid var(--border-color, #e2e8f0)',
             }}
@@ -1940,6 +2013,7 @@ export default function MembersManagerClient({
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 background: 'var(--bg-page)',
+                flexShrink: 0,
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
@@ -2018,6 +2092,7 @@ export default function MembersManagerClient({
                 alignItems: 'center',
                 justifyContent: 'flex-end',
                 gap: '0.75rem',
+                flexShrink: 0,
               }}
             >
               <button
@@ -2040,7 +2115,8 @@ export default function MembersManagerClient({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
