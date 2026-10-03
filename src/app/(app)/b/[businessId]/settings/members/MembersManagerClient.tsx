@@ -6,7 +6,7 @@
 
 'use client'
 
-import React, { useState, useTransition } from 'react'
+import React, { useState, useTransition, useMemo } from 'react'
 import {
   createDirectUserAction,
   updateMemberCustomPermissionsAction,
@@ -49,6 +49,10 @@ import {
   Settings,
   Truck,
   Copy,
+  Layers,
+  Sparkles,
+  ChevronRight,
+  Filter,
 } from 'lucide-react'
 
 export interface MemberRow {
@@ -76,16 +80,26 @@ interface Props {
 }
 
 const MODULE_ICONS: Record<string, React.ReactNode> = {
-  sales: <ShoppingCart size={18} />,
-  purchases: <ShoppingBag size={18} />,
-  customers: <Users size={18} />,
-  suppliers: <Truck size={18} />,
-  inventory: <Package size={18} />,
-  treasury: <Landmark size={18} />,
-  accounting: <BookOpen size={18} />,
-  expenses: <Receipt size={18} />,
-  reports: <BarChart3 size={18} />,
-  settings: <Settings size={18} />,
+  sales: <ShoppingCart size={17} />,
+  purchases: <ShoppingBag size={17} />,
+  customers: <Users size={17} />,
+  suppliers: <Truck size={17} />,
+  inventory: <Package size={17} />,
+  treasury: <Landmark size={17} />,
+  accounting: <BookOpen size={17} />,
+  expenses: <Receipt size={17} />,
+  reports: <BarChart3 size={17} />,
+  settings: <Settings size={17} />,
+}
+
+const ACTION_COLORS: Record<string, { bg: string; text: string; labelAr: string; labelEn: string }> = {
+  view: { bg: 'rgba(59, 130, 246, 0.1)', text: '#2563eb', labelAr: 'عرض واستعلام', labelEn: 'View' },
+  create: { bg: 'rgba(16, 185, 129, 0.1)', text: '#059669', labelAr: 'إنشاء وإصدار', labelEn: 'Create' },
+  edit: { bg: 'rgba(245, 158, 11, 0.1)', text: '#d97706', labelAr: 'تعديل', labelEn: 'Edit' },
+  delete: { bg: 'rgba(239, 68, 68, 0.1)', text: '#dc2626', labelAr: 'حذف وإلغاء', labelEn: 'Delete' },
+  manage: { bg: 'rgba(99, 102, 241, 0.1)', text: '#4f46e5', labelAr: 'إدارة شاملة', labelEn: 'Manage' },
+  post: { bg: 'rgba(168, 85, 247, 0.1)', text: '#7c3aed', labelAr: 'ترحيل وقفل', labelEn: 'Post & Lock' },
+  export: { bg: 'rgba(6, 182, 212, 0.1)', text: '#0891b2', labelAr: 'تصدير وطباعة', labelEn: 'Export' },
 }
 
 export default function MembersManagerClient({
@@ -115,12 +129,14 @@ export default function MembersManagerClient({
     ROLE_PRESET_PERMISSIONS['accountant'] || []
   )
   const [showNewPassword, setShowNewPassword] = useState(false)
-  const [showPermissionsInAddModal, setShowPermissionsInAddModal] = useState(false)
+  const [addUserActiveModule, setAddUserActiveModule] = useState<string>('all')
 
   // Edit Permissions Modal State
   const [editingMember, setEditingMember] = useState<MemberRow | null>(null)
   const [editPermissionsRole, setEditPermissionsRole] = useState<MemberRole>('accountant')
   const [editSelectedPermissions, setEditSelectedPermissions] = useState<string[]>([])
+  const [permActiveModule, setPermActiveModule] = useState<string>('all')
+  const [permSearchQuery, setPermSearchQuery] = useState('')
 
   // Direct Reset Password Modal State
   const [resettingMember, setResettingMember] = useState<MemberRow | null>(null)
@@ -147,7 +163,8 @@ export default function MembersManagerClient({
     active: isAr ? 'نشط' : isTr ? 'Aktif' : 'Active',
     inactive: isAr ? 'معطل' : isTr ? 'Pasif' : 'Inactive',
     allPermissions: isAr ? 'صلاحيات كاملة' : isTr ? 'Tam Yetkili' : 'Full Access',
-    customCount: (count: number) => isAr ? `${count} صلاحية مخصصة` : isTr ? `${count} özel izin` : `${count} custom perms`,
+    customCount: (count: number) => isAr ? `${count} صلاحية مفعلة` : isTr ? `${count} özel izin` : `${count} custom perms`,
+    allModules: isAr ? 'كافة الوحدات والأنظمة' : isTr ? 'Tüm Modüller' : 'All Modules',
     roles: {
       owner: isAr ? 'مالك المنشأة (Owner)' : isTr ? 'Kurucu / Sahip' : 'Owner',
       administrator: isAr ? 'مدير نظام (Admin)' : isTr ? 'Yönetici (Admin)' : 'Administrator',
@@ -224,6 +241,9 @@ export default function MembersManagerClient({
   function handleOpenEditPermissions(member: MemberRow) {
     setEditingMember(member)
     setEditPermissionsRole(member.role)
+    setPermActiveModule('all')
+    setPermSearchQuery('')
+
     let initialPerms: string[] = []
     if (Array.isArray(member.permissions)) {
       initialPerms = member.permissions
@@ -348,7 +368,7 @@ export default function MembersManagerClient({
     currentList: string[],
     setList: React.Dispatch<React.SetStateAction<string[]>>
   ) {
-    const moduleCodes = moduleGroup.permissions.map((p) => p.code)
+    const moduleCodes = groupPermissions(moduleGroup).map((p) => p.code)
     const allChecked = moduleCodes.every((code) => currentList.includes(code))
 
     if (allChecked) {
@@ -357,6 +377,10 @@ export default function MembersManagerClient({
       const unique = Array.from(new Set([...currentList, ...moduleCodes]))
       setList(unique)
     }
+  }
+
+  function groupPermissions(g: PermissionModuleGroup) {
+    return g.permissions
   }
 
   // Filtered members list
@@ -370,6 +394,31 @@ export default function MembersManagerClient({
     )
   })
 
+  // Filtered permission module groups for Edit Modal
+  const editModalFilteredGroups = useMemo(() => {
+    return SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
+      if (permActiveModule !== 'all' && group.moduleId !== permActiveModule) {
+        return null
+      }
+      if (!permSearchQuery.trim()) {
+        return group
+      }
+      const q = permSearchQuery.toLowerCase().trim()
+      const matchingPerms = group.permissions.filter(
+        (p) =>
+          p.nameAr.toLowerCase().includes(q) ||
+          p.nameEn.toLowerCase().includes(q) ||
+          p.code.toLowerCase().includes(q) ||
+          p.descriptionAr.toLowerCase().includes(q)
+      )
+      if (matchingPerms.length === 0) return null
+      return {
+        ...group,
+        permissions: matchingPerms,
+      }
+    }).filter(Boolean) as PermissionModuleGroup[]
+  }, [permActiveModule, permSearchQuery])
+
   return (
     <div>
       {/* Alert Notifications */}
@@ -377,10 +426,10 @@ export default function MembersManagerClient({
         <div
           style={{
             padding: '1rem 1.25rem',
-            borderRadius: '8px',
-            background: 'rgba(16, 185, 129, 0.1)',
-            border: '1px solid var(--color-brand-500)',
-            color: 'var(--color-brand-500)',
+            borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.08)',
+            border: '1px solid rgba(16, 185, 129, 0.3)',
+            color: '#065f46',
             marginBottom: '1.25rem',
             display: 'flex',
             alignItems: 'center',
@@ -390,7 +439,7 @@ export default function MembersManagerClient({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-            <CheckCircle2 size={18} />
+            <CheckCircle2 size={18} color="#10b981" />
             <span>{successMsg}</span>
           </div>
           <button
@@ -403,7 +452,7 @@ export default function MembersManagerClient({
             className="btn btn-secondary btn-sm"
             style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem' }}
           >
-            <Copy size={13} /> {copiedNotification ? (isAr ? 'تم النسخ!' : 'Copied!') : (isAr ? 'نسخ' : 'Copy')}
+            <Copy size={13} /> {copiedNotification ? (isAr ? 'تم النسخ!' : 'Copied!') : (isAr ? 'نسخ النص' : 'Copy')}
           </button>
         </div>
       )}
@@ -412,18 +461,19 @@ export default function MembersManagerClient({
         <div
           style={{
             padding: '1rem 1.25rem',
-            borderRadius: '8px',
-            background: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid var(--color-danger)',
-            color: 'var(--color-danger)',
+            borderRadius: '10px',
+            background: 'rgba(239, 68, 68, 0.08)',
+            border: '1px solid rgba(239, 68, 68, 0.3)',
+            color: '#991b1b',
             marginBottom: '1.25rem',
             display: 'flex',
             alignItems: 'center',
             gap: '0.625rem',
             fontSize: '0.875rem',
+            fontWeight: 600,
           }}
         >
-          <AlertCircle size={18} />
+          <AlertCircle size={18} color="#ef4444" />
           <span>{errorMsg}</span>
         </div>
       )}
@@ -510,7 +560,7 @@ export default function MembersManagerClient({
 
       {/* TAB 1: MEMBERS LIST */}
       {activeTab === 'members' && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left' }}>
               <thead>
@@ -527,8 +577,9 @@ export default function MembersManagerClient({
               <tbody>
                 {filteredMembers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      {isAr ? 'لم يتم العثور على أي مستخدمين مطابقين' : 'No matching members found'}
+                    <td colSpan={5} style={{ padding: '3.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <Users size={36} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+                      <div style={{ fontWeight: 600 }}>{isAr ? 'لم يتم العثور على أي مستخدمين مطابقين' : 'No matching members found'}</div>
                     </td>
                   </tr>
                 ) : (
@@ -544,23 +595,24 @@ export default function MembersManagerClient({
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                             <div
                               style={{
-                                width: 38,
-                                height: 38,
+                                width: 40,
+                                height: 40,
                                 borderRadius: '50%',
-                                background: 'linear-gradient(135deg, var(--color-brand-500), #8b5cf6)',
+                                background: 'linear-gradient(135deg, var(--color-brand-500, #4f46e5), #8b5cf6)',
                                 color: 'white',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 fontWeight: 700,
-                                fontSize: '0.875rem',
+                                fontSize: '0.9375rem',
                                 flexShrink: 0,
+                                boxShadow: '0 2px 6px rgba(99, 102, 241, 0.25)',
                               }}
                             >
                               {m.user.fullName?.charAt(0).toUpperCase() || m.user.email.charAt(0).toUpperCase()}
                             </div>
                             <div>
-                              <div style={{ fontWeight: 600, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                              <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
                                 {m.user.fullName}
                               </div>
                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
@@ -582,7 +634,7 @@ export default function MembersManagerClient({
                                 ? 'badge-success'
                                 : 'badge-secondary'
                             }`}
-                            style={{ fontSize: '0.75rem', padding: '0.35rem 0.625rem' }}
+                            style={{ fontSize: '0.75rem', padding: '0.35rem 0.625rem', fontWeight: 600 }}
                           >
                             {t.roles[m.role] || m.role}
                           </span>
@@ -591,28 +643,37 @@ export default function MembersManagerClient({
                         {/* Custom Permissions badge */}
                         <td style={{ padding: '0.875rem 1rem' }}>
                           {isOwner || isAdmin ? (
-                            <span className="badge badge-success" style={{ fontSize: '0.75rem' }}>
-                              <Check size={12} style={{ marginInlineEnd: '0.25rem' }} /> {t.allPermissions}
+                            <span className="badge badge-success" style={{ fontSize: '0.75rem', padding: '0.35rem 0.625rem' }}>
+                              <Check size={13} style={{ marginInlineEnd: '0.25rem' }} /> {t.allPermissions}
                             </span>
                           ) : customPermCount !== null ? (
-                            <span
-                              className="badge badge-info"
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditPermissions(m)}
+                              className="btn btn-secondary btn-sm"
                               style={{
                                 fontSize: '0.75rem',
-                                cursor: 'pointer',
+                                padding: '0.25rem 0.625rem',
                                 display: 'inline-flex',
                                 alignItems: 'center',
-                                gap: '0.25rem',
+                                gap: '0.375rem',
+                                borderColor: 'var(--color-brand-500)',
+                                color: 'var(--color-brand-500)',
                               }}
-                              onClick={() => handleOpenEditPermissions(m)}
                               title={isAr ? 'انقر لتعديل الصلاحيات' : 'Click to customize'}
                             >
-                              <Sliders size={12} /> {t.customCount(customPermCount)}
-                            </span>
+                              <Sliders size={13} />
+                              <span>{t.customCount(customPermCount)}</span>
+                            </button>
                           ) : (
-                            <span className="badge badge-secondary" style={{ fontSize: '0.75rem' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditPermissions(m)}
+                              className="btn btn-secondary btn-sm"
+                              style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                            >
                               {isAr ? 'افتراضي حسب الدور' : 'Role Preset'}
-                            </span>
+                            </button>
                           )}
                         </td>
 
@@ -620,7 +681,7 @@ export default function MembersManagerClient({
                         <td style={{ padding: '0.875rem 1rem' }}>
                           <span
                             className={`badge ${m.status === 'active' ? 'badge-success' : 'badge-danger'}`}
-                            style={{ fontSize: '0.75rem' }}
+                            style={{ fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
                           >
                             {m.status === 'active' ? t.active : t.inactive}
                           </span>
@@ -697,7 +758,7 @@ export default function MembersManagerClient({
 
       {/* TAB 2: ROLES & PERMISSIONS MATRIX */}
       {activeTab === 'matrix' && (
-        <div className="card" style={{ padding: '1.5rem' }}>
+        <div className="card" style={{ padding: '1.5rem', border: '1px solid var(--border-color)' }}>
           <div style={{ marginBottom: '1.5rem' }}>
             <h3 style={{ fontSize: '1.125rem', fontWeight: 700, marginBottom: '0.25rem' }}>
               {isAr ? 'دليل ومصفوفة الصلاحيات الشاملة للنظام' : 'ERP System Permissions & Capabilities Matrix'}
@@ -731,20 +792,38 @@ export default function MembersManagerClient({
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {group.permissions.map((p) => (
-                    <div
-                      key={p.code}
-                      style={{
-                        padding: '0.625rem 0.75rem',
-                        borderRadius: '6px',
-                        background: 'var(--bg-surface)',
-                        border: '1px solid var(--border-color)',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
-                        <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                          {isAr ? p.nameAr : isTr ? p.nameTr : p.nameEn}
-                        </span>
+                  {group.permissions.map((p) => {
+                    const actionInfo = ACTION_COLORS[p.action] || ACTION_COLORS.manage
+                    return (
+                      <div
+                        key={p.code}
+                        style={{
+                          padding: '0.75rem',
+                          borderRadius: '8px',
+                          background: 'var(--bg-surface)',
+                          border: '1px solid var(--border-color)',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                          <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                            {isAr ? p.nameAr : isTr ? p.nameTr : p.nameEn}
+                          </span>
+                          <span
+                            style={{
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              background: actionInfo.bg,
+                              color: actionInfo.text,
+                              padding: '0.15rem 0.45rem',
+                              borderRadius: '4px',
+                            }}
+                          >
+                            {isAr ? actionInfo.labelAr : actionInfo.labelEn}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0 0 0.35rem 0', lineHeight: 1.4 }}>
+                          {isAr ? p.descriptionAr : isTr ? p.descriptionTr : p.descriptionEn}
+                        </p>
                         <span
                           style={{
                             fontSize: '0.675rem',
@@ -758,11 +837,8 @@ export default function MembersManagerClient({
                           {p.code}
                         </span>
                       </div>
-                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
-                        {isAr ? p.descriptionAr : isTr ? p.descriptionTr : p.descriptionEn}
-                      </p>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             ))}
@@ -774,38 +850,82 @@ export default function MembersManagerClient({
       {/* MODAL 1: DIRECT USER CREATION MODAL                       */}
       {/* ========================================================= */}
       {isAddUserModalOpen && (
-        <div className="modal-backdrop" style={{ zIndex: 9999 }}>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
           <div
-            className="modal-content"
             style={{
-              maxWidth: '650px',
-              width: '95%',
+              width: '100%',
+              maxWidth: '680px',
               maxHeight: '90vh',
+              backgroundColor: 'var(--bg-surface, #ffffff)',
+              borderRadius: '16px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
               display: 'flex',
               flexDirection: 'column',
+              overflow: 'hidden',
+              border: '1px solid var(--border-color, #e2e8f0)',
             }}
           >
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <UserPlus size={20} style={{ color: 'var(--color-brand-500)' }} />
-                <h3 className="modal-title">{t.addUserBtn}</h3>
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-page)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: '8px',
+                    background: 'rgba(99, 102, 241, 0.1)',
+                    color: 'var(--color-brand-500)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <UserPlus size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>{t.addUserBtn}</h3>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {isAr ? 'إنشاء حساب مستخدم مباشر وتفعيله فوراً' : 'Create direct user account with immediate access'}
+                  </p>
+                </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsAddUserModalOpen(false)}
                 className="btn btn-secondary btn-sm"
-                style={{ width: 32, height: 32, padding: 0 }}
+                style={{ width: 32, height: 32, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <X size={16} />
               </button>
             </div>
 
             <form onSubmit={handleCreateDirectUser} style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
-              <div style={{ padding: '1.25rem', overflowY: 'auto', flex: 1 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+              <div style={{ padding: '1.5rem', overflowY: 'auto', flex: 1 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '1rem', marginBottom: '1.25rem' }}>
                   {/* Full Name */}
                   <div>
-                    <label className="form-label required">{isAr ? 'الاسم الكامل' : 'Full Name'}</label>
+                    <label className="form-label required">{isAr ? 'الاسم الكامل للمستخدم' : 'Full Name'}</label>
                     <input
                       type="text"
                       required
@@ -831,7 +951,7 @@ export default function MembersManagerClient({
                 </div>
 
                 {/* Password with Generator */}
-                <div style={{ marginBottom: '1rem' }}>
+                <div style={{ marginBottom: '1.25rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.375rem' }}>
                     <label className="form-label required" style={{ margin: 0 }}>
                       {isAr ? 'كلمة المرور المباشرة' : 'Direct Login Password'}
@@ -871,16 +991,16 @@ export default function MembersManagerClient({
                       {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                     </button>
                   </div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', display: 'block' }}>
                     {isAr
-                      ? 'سيتم تفعيل الحساب فوراً بهذا البريد وكلمة المرور دون الحاجة لتأكيد البريد'
-                      : 'Account will be activated immediately with this password without email verification'}
+                      ? '⚡ الحساب سيعمل فوراً دون انتظار أي رسائل تأكيد بريدية'
+                      : 'Account activates instantly without needing email confirmation'}
                   </span>
                 </div>
 
                 {/* Base Role Selector */}
                 <div style={{ marginBottom: '1.25rem' }}>
-                  <label className="form-label required">{isAr ? 'الدور الأساسي (القالب)' : 'Base Role Template'}</label>
+                  <label className="form-label required">{isAr ? 'الدور الأساسي (القالب الافتراضي)' : 'Base Role Template'}</label>
                   <select
                     value={newRole}
                     onChange={(e) => handleNewRoleChange(e.target.value as MemberRole)}
@@ -895,126 +1015,20 @@ export default function MembersManagerClient({
                     <option value="custom">{t.roles.custom}</option>
                   </select>
                 </div>
-
-                {/* Collapsible Granular Permissions Matrix */}
-                <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden' }}>
-                  <button
-                    type="button"
-                    onClick={() => setShowPermissionsInAddModal(!showPermissionsInAddModal)}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem 1rem',
-                      background: 'var(--bg-page)',
-                      border: 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      cursor: 'pointer',
-                      fontSize: '0.8125rem',
-                      fontWeight: 600,
-                    }}
-                  >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <Sliders size={16} style={{ color: 'var(--color-brand-500)' }} />
-                      {isAr ? 'تخصيص الصلاحيات التفصيلية يدوياً' : 'Customize Granular Permissions'}
-                    </span>
-                    <span className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
-                      {newCustomPermissions.length} {isAr ? 'محددة' : 'selected'}
-                    </span>
-                  </button>
-
-                  {showPermissionsInAddModal && (
-                    <div style={{ padding: '1rem', maxHeight: '250px', overflowY: 'auto', background: 'var(--bg-surface)' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                        <button
-                          type="button"
-                          onClick={() => setNewCustomPermissions([...ALL_PERMISSION_CODES])}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: '0.7rem' }}
-                        >
-                          {isAr ? 'تحديد الكل' : 'Select All'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setNewCustomPermissions([])}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: '0.7rem' }}
-                        >
-                          {isAr ? 'إلغاء التحديد' : 'Deselect All'}
-                        </button>
-                      </div>
-
-                      {SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
-                        const moduleCodes = group.permissions.map((p) => p.code)
-                        const allChecked = moduleCodes.every((c) => newCustomPermissions.includes(c))
-
-                        return (
-                          <div key={group.moduleId} style={{ marginBottom: '1rem' }}>
-                            <div
-                              style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                borderBottom: '1px solid var(--border-color)',
-                                paddingBottom: '0.375rem',
-                                marginBottom: '0.5rem',
-                              }}
-                            >
-                              <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-brand-500)' }}>
-                                {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => toggleModuleInList(group, newCustomPermissions, setNewCustomPermissions)}
-                                style={{
-                                  background: 'none',
-                                  border: 'none',
-                                  color: 'var(--text-muted)',
-                                  fontSize: '0.7rem',
-                                  cursor: 'pointer',
-                                  textDecoration: 'underline',
-                                }}
-                              >
-                                {allChecked ? (isAr ? 'إلغاء الوحدة' : 'Clear') : (isAr ? 'تحديد الوحدة' : 'Select all')}
-                              </button>
-                            </div>
-
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.375rem' }}>
-                              {group.permissions.map((p) => {
-                                const isChecked = newCustomPermissions.includes(p.code)
-                                return (
-                                  <label
-                                    key={p.code}
-                                    style={{
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '0.5rem',
-                                      fontSize: '0.75rem',
-                                      cursor: 'pointer',
-                                      padding: '0.25rem',
-                                      borderRadius: '4px',
-                                      background: isChecked ? 'rgba(99, 102, 241, 0.05)' : 'transparent',
-                                    }}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={isChecked}
-                                      onChange={() => togglePermissionInList(p.code, newCustomPermissions, setNewCustomPermissions)}
-                                    />
-                                    <span>{isAr ? p.nameAr : isTr ? p.nameTr : p.nameEn}</span>
-                                  </label>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
               </div>
 
-              <div className="modal-footer">
+              {/* Modal Footer */}
+              <div
+                style={{
+                  padding: '1rem 1.5rem',
+                  borderTop: '1px solid var(--border-color)',
+                  background: 'var(--bg-page)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'flex-end',
+                  gap: '0.75rem',
+                }}
+              >
                 <button
                   type="button"
                   onClick={() => setIsAddUserModalOpen(false)}
@@ -1027,7 +1041,7 @@ export default function MembersManagerClient({
                   type="submit"
                   className="btn btn-primary"
                   disabled={isPending}
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}
                 >
                   {isPending && <Loader2 size={16} className="animate-spin" />}
                   {isAr ? 'إنشاء وتفعيل الحساب فوراً' : 'Create & Activate User'}
@@ -1039,188 +1053,470 @@ export default function MembersManagerClient({
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 2: EDIT CUSTOM PERMISSIONS MODAL                    */}
+      {/* MODAL 2: ADVANCED CLEAN PERMISSIONS MANAGER MODAL         */}
       {/* ========================================================= */}
       {editingMember && (
-        <div className="modal-backdrop" style={{ zIndex: 9999 }}>
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
           <div
-            className="modal-content"
             style={{
-              maxWidth: '750px',
-              width: '95%',
-              maxHeight: '90vh',
+              width: '100%',
+              maxWidth: '980px',
+              height: '88vh',
+              backgroundColor: 'var(--bg-surface, #ffffff)',
+              borderRadius: '16px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.3)',
               display: 'flex',
               flexDirection: 'column',
+              overflow: 'hidden',
+              border: '1px solid var(--border-color, #e2e8f0)',
             }}
           >
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-                <Sliders size={20} style={{ color: 'var(--color-brand-500)' }} />
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-page)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, var(--color-brand-500, #4f46e5), #8b5cf6)',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    fontSize: '1.125rem',
+                    boxShadow: '0 4px 10px rgba(99, 102, 241, 0.25)',
+                  }}
+                >
+                  <Sliders size={22} />
+                </div>
                 <div>
-                  <h3 className="modal-title">
-                    {isAr ? `تخصيص صلاحيات المستخدم: ${editingMember.user.fullName}` : `Edit Permissions for ${editingMember.user.fullName}`}
-                  </h3>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 800 }}>
+                      {isAr ? `تخصيص صلاحيات المستخدم: ${editingMember.user.fullName}` : `Manage Permissions: ${editingMember.user.fullName}`}
+                    </h3>
+                    <span className="badge badge-primary" style={{ fontSize: '0.75rem' }}>
+                      {editSelectedPermissions.length} / {ALL_PERMISSION_CODES.length} {isAr ? 'صلاحية مفعلة' : 'active'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginTop: '0.15rem' }}>
                     {editingMember.user.email}
-                  </span>
+                  </div>
                 </div>
               </div>
+
               <button
                 type="button"
                 onClick={() => setEditingMember(null)}
                 className="btn btn-secondary btn-sm"
-                style={{ width: 32, height: 32, padding: 0 }}
+                style={{ width: 34, height: 34, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
-                <X size={16} />
+                <X size={18} />
               </button>
             </div>
 
-            <div style={{ padding: '1.25rem', overflowY: 'auto', flex: 1 }}>
-              {/* Quick Template Presets */}
-              <div style={{ marginBottom: '1.25rem', background: 'var(--bg-page)', padding: '1rem', borderRadius: '8px' }}>
-                <label className="form-label" style={{ marginBottom: '0.5rem', fontWeight: 700 }}>
-                  {isAr ? 'تطبيق قالب صلاحيات سريع:' : 'Apply Preset Template:'}
-                </label>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  {(['accountant', 'sales_user', 'purchase_user', 'inventory_user', 'viewer', 'administrator'] as MemberRole[]).map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => {
-                        setEditPermissionsRole(r)
-                        setEditSelectedPermissions([...(ROLE_PRESET_PERMISSIONS[r] || [])])
-                      }}
-                      className={`btn btn-sm ${editPermissionsRole === r ? 'btn-primary' : 'btn-secondary'}`}
-                      style={{ fontSize: '0.75rem' }}
-                    >
-                      {t.roles[r] || r}
-                    </button>
-                  ))}
+            {/* Top Toolbar: Quick Presets & Search */}
+            <div
+              style={{
+                padding: '0.75rem 1.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                background: 'var(--bg-surface)',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.75rem',
+              }}
+            >
+              {/* Role Presets */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.375rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginInlineEnd: '0.25rem' }}>
+                  {isAr ? 'قوالب سريعة:' : 'Presets:'}
+                </span>
+                {(['accountant', 'sales_user', 'purchase_user', 'inventory_user', 'viewer'] as MemberRole[]).map((r) => (
                   <button
+                    key={r}
                     type="button"
-                    onClick={() => setEditSelectedPermissions([...ALL_PERMISSION_CODES])}
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: '0.75rem' }}
+                    onClick={() => {
+                      setEditPermissionsRole(r)
+                      setEditSelectedPermissions([...(ROLE_PRESET_PERMISSIONS[r] || [])])
+                    }}
+                    className={`btn btn-sm ${editPermissionsRole === r ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.725rem', padding: '0.2rem 0.5rem', borderRadius: '6px' }}
                   >
-                    {isAr ? 'تحديد كافة الصلاحيات' : 'Select All'}
+                    {t.roles[r] || r}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditSelectedPermissions([])}
-                    className="btn btn-secondary btn-sm"
-                    style={{ fontSize: '0.75rem' }}
-                  >
-                    {isAr ? 'إلغاء الكل' : 'Clear'}
-                  </button>
-                </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setEditSelectedPermissions([...ALL_PERMISSION_CODES])}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.725rem', padding: '0.2rem 0.5rem', borderRadius: '6px', color: '#10b981' }}
+                >
+                  <Check size={12} style={{ marginInlineEnd: '0.2rem' }} />
+                  {isAr ? 'تحديد الكل' : 'Select All'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditSelectedPermissions([])}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.725rem', padding: '0.2rem 0.5rem', borderRadius: '6px', color: '#ef4444' }}
+                >
+                  {isAr ? 'إلغاء الكل' : 'Clear All'}
+                </button>
               </div>
 
-              {/* Modules Matrix */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+              {/* Perm Search */}
+              <div style={{ position: 'relative', width: '220px' }}>
+                <Search
+                  size={14}
+                  style={{
+                    position: 'absolute',
+                    [isAr ? 'right' : 'left']: '0.625rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--text-muted)',
+                  }}
+                />
+                <input
+                  type="text"
+                  value={permSearchQuery}
+                  onChange={(e) => setPermSearchQuery(e.target.value)}
+                  placeholder={isAr ? 'تصفية الصلاحيات...' : 'Filter permissions...'}
+                  className="form-control"
+                  style={{
+                    [isAr ? 'paddingRight' : 'paddingLeft']: '2rem',
+                    height: '32px',
+                    fontSize: '0.75rem',
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* Modal Body: Two Column (Module Nav + Permissions Grid) */}
+            <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+              {/* Sidebar Module Navigation */}
+              <div
+                style={{
+                  width: '240px',
+                  borderInlineEnd: '1px solid var(--border-color)',
+                  background: 'var(--bg-page)',
+                  overflowY: 'auto',
+                  padding: '0.75rem 0.5rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem',
+                  flexShrink: 0,
+                }}
+              >
+                {/* All Modules Tab */}
+                <button
+                  type="button"
+                  onClick={() => setPermActiveModule('all')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    padding: '0.625rem 0.75rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: permActiveModule === 'all' ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                    color: permActiveModule === 'all' ? 'var(--color-brand-500)' : 'var(--text-primary)',
+                    fontWeight: permActiveModule === 'all' ? 700 : 500,
+                    fontSize: '0.8125rem',
+                    cursor: 'pointer',
+                    textAlign: isAr ? 'right' : 'left',
+                    width: '100%',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <Layers size={16} />
+                    <span>{t.allModules}</span>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '10px',
+                      background: permActiveModule === 'all' ? 'var(--color-brand-500)' : 'rgba(100, 116, 139, 0.15)',
+                      color: permActiveModule === 'all' ? '#ffffff' : 'var(--text-muted)',
+                    }}
+                  >
+                    {editSelectedPermissions.length}
+                  </span>
+                </button>
+
+                <div style={{ height: '1px', background: 'var(--border-color)', margin: '0.35rem 0.5rem' }} />
+
+                {/* Individual Modules */}
                 {SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
                   const moduleCodes = group.permissions.map((p) => p.code)
-                  const allChecked = moduleCodes.every((c) => editSelectedPermissions.includes(c))
+                  const enabledCount = moduleCodes.filter((c) => editSelectedPermissions.includes(c)).length
+                  const isSelected = permActiveModule === group.moduleId
+                  const allActive = enabledCount === moduleCodes.length && moduleCodes.length > 0
 
                   return (
-                    <div
+                    <button
                       key={group.moduleId}
+                      type="button"
+                      onClick={() => setPermActiveModule(group.moduleId)}
                       style={{
-                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '0.625rem 0.75rem',
                         borderRadius: '8px',
-                        padding: '1rem',
-                        background: 'var(--bg-surface)',
+                        border: 'none',
+                        background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                        color: isSelected ? 'var(--color-brand-500)' : 'var(--text-primary)',
+                        fontWeight: isSelected ? 700 : 500,
+                        fontSize: '0.8125rem',
+                        cursor: 'pointer',
+                        textAlign: isAr ? 'right' : 'left',
+                        width: '100%',
+                        transition: 'all 0.15s ease',
                       }}
                     >
-                      <div
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          borderBottom: '1px solid var(--border-color)',
-                          paddingBottom: '0.5rem',
-                          marginBottom: '0.75rem',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-brand-500)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                        <span style={{ color: isSelected ? 'var(--color-brand-500)' : 'var(--text-muted)' }}>
                           {MODULE_ICONS[group.moduleId] || <Shield size={16} />}
-                          <span style={{ fontWeight: 700, fontSize: '0.875rem' }}>
-                            {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => toggleModuleInList(group, editSelectedPermissions, setEditSelectedPermissions)}
-                          className="btn btn-secondary btn-sm"
-                          style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem' }}
-                        >
-                          {allChecked ? (isAr ? 'إلغاء تحديد الوحدة' : 'Deselect Module') : (isAr ? 'تحديد كافة الوحدة' : 'Select Module')}
-                        </button>
+                        </span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
+                        </span>
                       </div>
 
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '0.5rem' }}>
-                        {group.permissions.map((p) => {
-                          const isChecked = editSelectedPermissions.includes(p.code)
-                          return (
-                            <label
-                              key={p.code}
-                              style={{
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '0.625rem',
-                                padding: '0.5rem 0.625rem',
-                                borderRadius: '6px',
-                                border: '1px solid',
-                                borderColor: isChecked ? 'var(--color-brand-500)' : 'var(--border-color)',
-                                background: isChecked ? 'rgba(99, 102, 241, 0.04)' : 'var(--bg-page)',
-                                cursor: 'pointer',
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => togglePermissionInList(p.code, editSelectedPermissions, setEditSelectedPermissions)}
-                                style={{ marginTop: '0.15rem' }}
-                              />
-                              <div>
-                                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                                  {isAr ? p.nameAr : isTr ? p.nameTr : p.nameEn}
-                                </div>
-                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                                  {isAr ? p.descriptionAr : isTr ? p.descriptionTr : p.descriptionEn}
-                                </div>
-                              </div>
-                            </label>
-                          )
-                        })}
-                      </div>
-                    </div>
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          fontWeight: 700,
+                          padding: '0.1rem 0.4rem',
+                          borderRadius: '10px',
+                          background: allActive
+                            ? 'rgba(16, 185, 129, 0.15)'
+                            : enabledCount > 0
+                            ? 'rgba(99, 102, 241, 0.15)'
+                            : 'rgba(100, 116, 139, 0.12)',
+                          color: allActive
+                            ? '#059669'
+                            : enabledCount > 0
+                            ? 'var(--color-brand-500)'
+                            : 'var(--text-muted)',
+                        }}
+                      >
+                        {enabledCount}/{moduleCodes.length}
+                      </span>
+                    </button>
                   )
                 })}
               </div>
+
+              {/* Main Permissions Content Area */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+                {editModalFilteredGroups.length === 0 ? (
+                  <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                    <Search size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+                    <div style={{ fontWeight: 600 }}>{isAr ? 'لا توجد صلاحيات مطابقة للبحث' : 'No matching permissions found'}</div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    {editModalFilteredGroups.map((group) => {
+                      const moduleCodes = group.permissions.map((p) => p.code)
+                      const allChecked = moduleCodes.every((c) => editSelectedPermissions.includes(c))
+                      const someChecked = moduleCodes.some((c) => editSelectedPermissions.includes(c))
+
+                      return (
+                        <div
+                          key={group.moduleId}
+                          style={{
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '12px',
+                            background: 'var(--bg-surface)',
+                            overflow: 'hidden',
+                            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                          }}
+                        >
+                          {/* Module Header Bar */}
+                          <div
+                            style={{
+                              padding: '0.75rem 1rem',
+                              background: 'var(--bg-page)',
+                              borderBottom: '1px solid var(--border-color)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-brand-500)' }}>
+                              {MODULE_ICONS[group.moduleId] || <Shield size={18} />}
+                              <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 800 }}>
+                                {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
+                              </h4>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => toggleModuleInList(group, editSelectedPermissions, setEditSelectedPermissions)}
+                              className="btn btn-secondary btn-sm"
+                              style={{ fontSize: '0.725rem', padding: '0.2rem 0.6rem' }}
+                            >
+                              {allChecked
+                                ? (isAr ? 'إلغاء تحديد الوحدة' : 'Deselect Module')
+                                : (isAr ? 'تحديد كافة الوحدة' : 'Select All')}
+                            </button>
+                          </div>
+
+                          {/* Permissions Rows */}
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            {group.permissions.map((p, idx) => {
+                              const isChecked = editSelectedPermissions.includes(p.code)
+                              const actionInfo = ACTION_COLORS[p.action] || ACTION_COLORS.manage
+
+                              return (
+                                <div
+                                  key={p.code}
+                                  onClick={() => togglePermissionInList(p.code, editSelectedPermissions, setEditSelectedPermissions)}
+                                  style={{
+                                    padding: '0.875rem 1rem',
+                                    borderBottom: idx === group.permissions.length - 1 ? 'none' : '1px solid var(--border-color)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                    cursor: 'pointer',
+                                    backgroundColor: isChecked ? 'rgba(99, 102, 241, 0.03)' : 'transparent',
+                                    transition: 'background-color 0.15s ease',
+                                    gap: '1rem',
+                                  }}
+                                >
+                                  {/* Right side: Checkbox + info */}
+                                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={() => {}} // Handled by parent div
+                                      style={{
+                                        width: '18px',
+                                        height: '18px',
+                                        marginTop: '0.15rem',
+                                        cursor: 'pointer',
+                                        accentColor: 'var(--color-brand-500, #4f46e5)',
+                                      }}
+                                    />
+                                    <div>
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                                        <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                          {isAr ? p.nameAr : isTr ? p.nameTr : p.nameEn}
+                                        </span>
+                                        <span
+                                          style={{
+                                            fontSize: '0.65rem',
+                                            fontWeight: 700,
+                                            background: actionInfo.bg,
+                                            color: actionInfo.text,
+                                            padding: '0.1rem 0.4rem',
+                                            borderRadius: '4px',
+                                          }}
+                                        >
+                                          {isAr ? actionInfo.labelAr : actionInfo.labelEn}
+                                        </span>
+                                      </div>
+                                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                                        {isAr ? p.descriptionAr : isTr ? p.descriptionTr : p.descriptionEn}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  {/* Left side: Code Badge */}
+                                  <span
+                                    style={{
+                                      fontSize: '0.675rem',
+                                      fontFamily: 'monospace',
+                                      color: 'var(--text-muted)',
+                                      background: 'var(--bg-page)',
+                                      padding: '0.15rem 0.45rem',
+                                      borderRadius: '4px',
+                                      border: '1px solid var(--border-color)',
+                                      flexShrink: 0,
+                                    }}
+                                  >
+                                    {p.code}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="modal-footer">
-              <span style={{ marginInlineEnd: 'auto', fontSize: '0.8125rem', fontWeight: 600 }}>
-                {isAr ? `الإجمالي المحدد: ${editSelectedPermissions.length} من ${ALL_PERMISSION_CODES.length}` : `Selected: ${editSelectedPermissions.length}/${ALL_PERMISSION_CODES.length}`}
-              </span>
-              <button
-                type="button"
-                onClick={() => setEditingMember(null)}
-                className="btn btn-secondary"
-                disabled={isPending}
-              >
-                {isAr ? 'إلغاء' : 'Cancel'}
-              </button>
-              <button
-                type="button"
-                onClick={handleSavePermissions}
-                className="btn btn-primary"
-                disabled={isPending}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-              >
-                {isPending && <Loader2 size={16} className="animate-spin" />}
-                {isAr ? 'حفظ الصلاحيات المخصصة' : 'Save Permissions'}
-              </button>
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                borderTop: '1px solid var(--border-color)',
+                background: 'var(--bg-page)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {isAr ? 'الإجمالي المعتمد:' : 'Total Configured:'}
+                </span>
+                <span className="badge badge-primary" style={{ fontSize: '0.8125rem', padding: '0.3rem 0.6rem' }}>
+                  {editSelectedPermissions.length} من {ALL_PERMISSION_CODES.length} {isAr ? 'صلاحية' : 'permissions'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setEditingMember(null)}
+                  className="btn btn-secondary"
+                  disabled={isPending}
+                >
+                  {isAr ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSavePermissions}
+                  className="btn btn-primary"
+                  disabled={isPending}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}
+                >
+                  {isPending && <Loader2 size={16} className="animate-spin" />}
+                  {isAr ? 'حفظ واعتماد الصلاحيات' : 'Save Permissions'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1230,27 +1526,60 @@ export default function MembersManagerClient({
       {/* MODAL 3: DIRECT RESET PASSWORD MODAL                      */}
       {/* ========================================================= */}
       {resettingMember && (
-        <div className="modal-backdrop" style={{ zIndex: 9999 }}>
-          <div className="modal-content" style={{ maxWidth: '480px', width: '95%' }}>
-            <div className="modal-header">
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 9999,
+            backgroundColor: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '480px',
+              backgroundColor: 'var(--bg-surface, #ffffff)',
+              borderRadius: '16px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+              overflow: 'hidden',
+              border: '1px solid var(--border-color, #e2e8f0)',
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-page)',
+              }}
+            >
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
                 <KeyRound size={20} style={{ color: 'var(--color-brand-500)' }} />
-                <h3 className="modal-title">{t.resetPassword}</h3>
+                <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>{t.resetPassword}</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setResettingMember(null)}
                 className="btn btn-secondary btn-sm"
-                style={{ width: 32, height: 32, padding: 0 }}
+                style={{ width: 32, height: 32, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
               >
                 <X size={16} />
               </button>
             </div>
 
-            <div style={{ padding: '1.25rem' }}>
-              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            {/* Content */}
+            <div style={{ padding: '1.5rem' }}>
+              <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '1rem', lineHeight: 1.5 }}>
                 {isAr
-                  ? `تعيين كلمة مرور جديدة للمستخدم (${resettingMember.user.fullName}) (${resettingMember.user.email}) بشكل مباشر وفوري:`
+                  ? `تعيين كلمة مرور دخول جديدة للمستخدم (${resettingMember.user.fullName}) (${resettingMember.user.email}) بشكل فوري:`
                   : `Set new direct login password for ${resettingMember.user.fullName}:`}
               </p>
 
@@ -1276,7 +1605,7 @@ export default function MembersManagerClient({
                     value={resetPasswordValue}
                     onChange={(e) => setResetPasswordValue(e.target.value)}
                     className="form-control"
-                    style={{ [isAr ? 'paddingLeft' : 'paddingRight']: '2.5rem', fontFamily: 'monospace' }}
+                    style={{ [isAr ? 'paddingLeft' : 'paddingRight']: '2.5rem', fontFamily: 'monospace', fontSize: '0.9375rem' }}
                   />
                   <button
                     type="button"
@@ -1298,7 +1627,18 @@ export default function MembersManagerClient({
               </div>
             </div>
 
-            <div className="modal-footer">
+            {/* Footer */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                borderTop: '1px solid var(--border-color)',
+                background: 'var(--bg-page)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-end',
+                gap: '0.75rem',
+              }}
+            >
               <button
                 type="button"
                 onClick={() => setResettingMember(null)}
@@ -1312,7 +1652,7 @@ export default function MembersManagerClient({
                 onClick={handleSavePasswordReset}
                 className="btn btn-primary"
                 disabled={isPending}
-                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}
               >
                 {isPending && <Loader2 size={16} className="animate-spin" />}
                 {isAr ? 'تحديث كلمة المرور فوراً' : 'Update Password'}
