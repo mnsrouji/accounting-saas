@@ -14,6 +14,14 @@ export const metadata: Metadata = {
   keywords: ['accounting', 'invoicing', 'business management', 'SaaS', 'double-entry', 'financial reports'],
   authors: [{ name: 'AccountFlow' }],
   robots: 'index, follow',
+  icons: {
+    icon: [
+      { url: '/favicon.svg', type: 'image/svg+xml' },
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/favicon.svg',
+    apple: '/icon.svg',
+  },
   openGraph: {
     type: 'website',
     siteName: 'AccountFlow',
