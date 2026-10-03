@@ -118,6 +118,7 @@ export async function createDirectUserAction(params: {
   password?: string
   phone?: string
   role: MemberRole
+  roleId?: string | null
   customPermissions?: string[]
 }) {
   try {
@@ -133,6 +134,7 @@ export async function createDirectUserAction(params: {
       password: params.password,
       phone: params.phone,
       role: params.role,
+      roleId: params.roleId,
       customPermissions: params.customPermissions,
       adminUserId: userId,
     })
@@ -150,6 +152,7 @@ export async function updateMemberCustomPermissionsAction(params: {
   targetUserId: string
   permissions: string[]
   role?: MemberRole
+  roleId?: string | null
 }) {
   try {
     const { userId, role, isSuperAdmin } = await requireBusinessAccess(params.businessId, 'settings', 'full')
@@ -162,6 +165,7 @@ export async function updateMemberCustomPermissionsAction(params: {
       params.targetUserId,
       params.permissions,
       params.role,
+      params.roleId,
       userId
     )
 

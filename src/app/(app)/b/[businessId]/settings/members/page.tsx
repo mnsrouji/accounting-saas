@@ -6,6 +6,7 @@
 import type { Metadata } from 'next'
 import { requireBusinessAccess } from '@/lib/auth/require-auth'
 import { InvitationService } from '@/lib/services/invitation-service'
+import { RoleService } from '@/lib/services/role-service'
 import { SettingsNav } from '@/components/settings/settings-nav'
 import { getLocale } from 'next-intl/server'
 import MembersManagerClient from './MembersManagerClient'
@@ -27,15 +28,18 @@ export default async function TenantMembersPage({ params }: Props) {
   const isTr = locale === 'tr'
   await requireBusinessAccess(businessId)
 
-  const members = await InvitationService.getMembers(businessId)
+  const [members, roles] = await Promise.all([
+    InvitationService.getMembers(businessId),
+    RoleService.getRoles(businessId),
+  ])
 
   const t = {
-    title: isAr ? 'فريق العمل وإدارة الصلاحيات' : isTr ? 'Ekip Üyeleri ve Yetki Yönetimi' : 'Team Members & Access Control',
+    title: isAr ? 'فريق العمل وإدارة الصلاحيات والأدوار' : isTr ? 'Ekip Üyeleri, Roller ve Yetki Yönetimi' : 'Team Members, Custom Roles & Access Control',
     subtitle: isAr
-      ? 'دعوة الزملاء، تعيين الأدوار الوظيفية، وإدارة صلاحيات الوصول للنظام'
+      ? 'إضافة مستخدمين، تخصيص الصلاحيات بدقة، وإنشاء أدوار وظيفية مخصصة'
       : isTr
-      ? 'İş arkadaşlarını davet edin, organizasyonel roller atayın ve sistem erişimini yönetin'
-      : 'Invite colleagues, assign organizational roles, and manage active system access',
+      ? 'Kullanıcı ekleme, özel yetkilendirme ve özel roller tanımlama'
+      : 'Direct user provisioning, custom roles builder, and granular access control',
   }
 
   return (
@@ -52,6 +56,7 @@ export default async function TenantMembersPage({ params }: Props) {
       <MembersManagerClient
         businessId={businessId}
         initialMembers={members as any}
+        initialRoles={roles as any}
       />
     </div>
   )

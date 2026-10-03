@@ -1,7 +1,7 @@
 // =============================================================
-// Members & Permissions Manager Client Component
+// Members, Custom Roles & Permissions Manager Client Component
 // Multi-Tenant SaaS Accounting & ERP Platform
-// Supports: Direct User Creation, Dual Permissions Views (Detailed & Matrix), & Direct Password Resets
+// Supports: Direct User Creation, Custom Roles Builder, Dual Permissions Views, & Direct Password Resets
 // =============================================================
 
 'use client'
@@ -16,6 +16,12 @@ import {
   updateMemberStatusAction,
   removeMemberAction,
 } from '@/actions/saas/invitation-actions'
+import {
+  createCustomRoleAction,
+  updateCustomRoleAction,
+  deleteCustomRoleAction,
+} from '@/actions/saas/role-actions'
+import { CustomRoleDTO } from '@/lib/services/role-service'
 import { MemberRole, MemberStatus } from '@prisma/client'
 import { useLocale } from 'next-intl'
 import {
@@ -57,12 +63,18 @@ import {
   Sparkles,
   HelpCircle,
   LayoutGrid,
+  Plus,
+  ShieldCheck,
+  Edit3,
+  Lock,
+  CheckSquare,
 } from 'lucide-react'
 
 export interface MemberRow {
   id: string
   userId: string
   role: MemberRole
+  roleId?: string | null
   status: MemberStatus
   permissions?: string[] | Record<string, boolean> | null
   invitedAt: Date | null
@@ -80,6 +92,7 @@ export interface MemberRow {
 interface Props {
   businessId: string
   initialMembers: MemberRow[]
+  initialRoles?: CustomRoleDTO[]
   isSuperAdmin?: boolean
 }
 
@@ -109,6 +122,7 @@ const ACTION_COLORS: Record<string, { bg: string; text: string; labelAr: string;
 export default function MembersManagerClient({
   businessId,
   initialMembers,
+  initialRoles = [],
   isSuperAdmin = true,
 }: Props) {
   const locale = useLocale()
@@ -116,11 +130,17 @@ export default function MembersManagerClient({
   const isTr = locale === 'tr'
 
   const [members, setMembers] = useState<MemberRow[]>(initialMembers)
+  const [roles, setRoles] = useState<CustomRoleDTO[]>(initialRoles)
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeTab, setActiveTab] = useState<'members' | 'matrix'>('members')
+  const [activeTab, setActiveTab] = useState<'members' | 'roles' | 'matrix'>('members')
   const [isPending, startTransition] = useTransition()
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Direct User Creation Modal State
   const [isAddUserModalOpen, setIsAddUserModalOpen] = useState(false)
@@ -128,35 +148,42 @@ export default function MembersManagerClient({
   const [newEmail, setNewEmail] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [newPhone, setNewPhone] = useState('')
-  const [newRole, setNewRole] = useState<MemberRole>('accountant')
+  const [newRoleSelection, setNewRoleSelection] = useState<string>('accountant') // can be system role or custom role id
   const [newCustomPermissions, setNewCustomPermissions] = useState<string[]>(
     ROLE_PRESET_PERMISSIONS['accountant'] || []
   )
   const [showNewPassword, setShowNewPassword] = useState(false)
 
-  // Edit Permissions Modal State
+  // Edit User Permissions Modal State
   const [editingMember, setEditingMember] = useState<MemberRow | null>(null)
   const [editPermissionsRole, setEditPermissionsRole] = useState<MemberRole>('accountant')
   const [editSelectedPermissions, setEditSelectedPermissions] = useState<string[]>([])
   const [permActiveModule, setPermActiveModule] = useState<string>('all')
   const [permSearchQuery, setPermSearchQuery] = useState('')
-  const [permModalMode, setPermModalMode] = useState<'matrix' | 'detailed'>('matrix') // Dual viewing mode!
+  const [permModalMode, setPermModalMode] = useState<'matrix' | 'detailed'>('matrix')
+
+  // Custom Role Builder Modal State (Create or Edit a Custom Role)
+  const [isRoleModalOpen, setIsRoleModalOpen] = useState(false)
+  const [editingRole, setEditingRole] = useState<CustomRoleDTO | null>(null)
+  const [roleFormName, setRoleFormName] = useState('')
+  const [roleFormDescription, setRoleFormDescription] = useState('')
+  const [roleFormPermissions, setRoleFormPermissions] = useState<string[]>([])
+  const [roleFormViewMode, setRoleFormViewMode] = useState<'matrix' | 'detailed'>('matrix')
+  const [roleFormSearchQuery, setRoleFormSearchQuery] = useState('')
+  const [roleFormActiveModule, setRoleFormActiveModule] = useState<string>('all')
 
   // Direct Reset Password Modal State
   const [resettingMember, setResettingMember] = useState<MemberRow | null>(null)
   const [resetPasswordValue, setResetPasswordValue] = useState('')
   const [showResetPassword, setShowResetPassword] = useState(false)
   const [copiedNotification, setCopiedNotification] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   const t = {
     teamMembers: isAr ? 'المستخدمون وفريق العمل' : isTr ? 'Ekip Üyeleri ve Kullanıcılar' : 'Team Members & Users',
-    permissionsMatrix: isAr ? 'مصفوفة الصلاحيات والأدوار' : isTr ? 'Yetki ve Rol Matrisi' : 'Permissions & Roles Matrix',
+    customRolesTab: isAr ? 'الأدوار الوظيفية والقوالب' : isTr ? 'Özel Roller ve Şablonlar' : 'Custom Roles & Presets',
+    permissionsMatrix: isAr ? 'مصفوفة الصلاحيات' : isTr ? 'Yetki Matrisi' : 'Permissions Matrix',
     addUserBtn: isAr ? 'إضافة مستخدم مباشر' : isTr ? 'Doğrudan Kullanıcı Ekle' : 'Add Direct User',
+    addRoleBtn: isAr ? 'إضافة دور وظيفي جديد' : isTr ? 'Yeni Rol Ekle' : 'Add Custom Role',
     searchPlaceholder: isAr ? 'البحث بالاسم أو البريد أو الدور...' : isTr ? 'İsim, e-posta veya role göre ara...' : 'Search by name, email or role...',
     userCol: isAr ? 'المستخدم' : isTr ? 'Kullanıcı' : 'User',
     roleCol: isAr ? 'الدور الأساسي' : isTr ? 'Rol' : 'Base Role',
@@ -169,6 +196,7 @@ export default function MembersManagerClient({
     deactivate: isAr ? 'تعطيل الحساب' : isTr ? 'Devre Dışı Bırak' : 'Deactivate',
     removeMember: isAr ? 'حذف من المنشأة' : isTr ? 'İşletmeden Kaldır' : 'Remove Member',
     confirmRemove: isAr ? 'هل أنت متأكد من حذف هذا المستخدم من المنشأة؟' : isTr ? 'Bu kullanıcıyı işletmeden kaldırmak istediğinize emin misiniz?' : 'Are you sure you want to remove this member?',
+    confirmDeleteRole: isAr ? 'هل أنت متأكد من حذف هذا الدور المخصص؟ سيتم تحويل المستخدمين المرتبطين به إلى صلاحيات مخصصة.' : 'Are you sure you want to delete this custom role?',
     active: isAr ? 'نشط' : isTr ? 'Aktif' : 'Active',
     inactive: isAr ? 'معطل' : isTr ? 'Pasif' : 'Inactive',
     allPermissions: isAr ? 'صلاحيات كاملة' : isTr ? 'Tam Yetkili' : 'Full Access',
@@ -198,11 +226,17 @@ export default function MembersManagerClient({
     return pwd
   }
 
-  // Handle role change in Add User Modal
-  function handleNewRoleChange(role: MemberRole) {
-    setNewRole(role)
-    if (ROLE_PRESET_PERMISSIONS[role]) {
-      setNewCustomPermissions([...ROLE_PRESET_PERMISSIONS[role]])
+  // Handle role selection change in Add User Modal
+  function handleNewRoleSelectionChange(val: string) {
+    setNewRoleSelection(val)
+    if (val.startsWith('custom_role_')) {
+      const roleId = val.replace('custom_role_', '')
+      const customRole = roles.find((r) => r.id === roleId)
+      if (customRole) {
+        setNewCustomPermissions([...customRole.permissions])
+      }
+    } else if (ROLE_PRESET_PERMISSIONS[val]) {
+      setNewCustomPermissions([...ROLE_PRESET_PERMISSIONS[val]])
     }
   }
 
@@ -218,6 +252,15 @@ export default function MembersManagerClient({
     }
 
     const passwordToUse = newPassword.trim() || generateRandomPassword()
+    let assignedRole: MemberRole = 'accountant'
+    let assignedRoleId: string | null = null
+
+    if (newRoleSelection.startsWith('custom_role_')) {
+      assignedRole = 'custom'
+      assignedRoleId = newRoleSelection.replace('custom_role_', '')
+    } else {
+      assignedRole = (newRoleSelection as MemberRole) || 'accountant'
+    }
 
     startTransition(async () => {
       const res = await createDirectUserAction({
@@ -226,7 +269,8 @@ export default function MembersManagerClient({
         email: newEmail.trim(),
         password: passwordToUse,
         phone: newPhone.trim() || undefined,
-        role: newRole,
+        role: assignedRole,
+        roleId: assignedRoleId,
         customPermissions: newCustomPermissions,
       })
 
@@ -266,7 +310,7 @@ export default function MembersManagerClient({
     setEditSelectedPermissions(initialPerms)
   }
 
-  // Save Custom Permissions
+  // Save Custom Permissions for a Member
   function handleSavePermissions() {
     if (!editingMember) return
     setErrorMsg(null)
@@ -297,6 +341,104 @@ export default function MembersManagerClient({
         setTimeout(() => setSuccessMsg(null), 4000)
       } else {
         setErrorMsg(res.error || (isAr ? 'فشل تحديث الصلاحيات' : 'Failed to update permissions'))
+      }
+    })
+  }
+
+  // Open Role Builder Modal to Create a New Role
+  function handleOpenCreateRole() {
+    setEditingRole(null)
+    setRoleFormName('')
+    setRoleFormDescription('')
+    setRoleFormPermissions([...(ROLE_PRESET_PERMISSIONS['accountant'] || [])])
+    setRoleFormActiveModule('all')
+    setRoleFormSearchQuery('')
+    setRoleFormViewMode('matrix')
+    setIsRoleModalOpen(true)
+  }
+
+  // Open Role Builder Modal to Edit an Existing Role
+  function handleOpenEditRole(role: CustomRoleDTO) {
+    setEditingRole(role)
+    setRoleFormName(role.name)
+    setRoleFormDescription(role.description || '')
+    setRoleFormPermissions([...(role.permissions || [])])
+    setRoleFormActiveModule('all')
+    setRoleFormSearchQuery('')
+    setRoleFormViewMode('matrix')
+    setIsRoleModalOpen(true)
+  }
+
+  // Save Role (Create or Update)
+  function handleSaveRole() {
+    if (!roleFormName.trim()) {
+      setErrorMsg(isAr ? 'يرجى إدخال اسم الدور الوظيفي' : 'Please enter role name')
+      return
+    }
+
+    setErrorMsg(null)
+    setSuccessMsg(null)
+
+    startTransition(async () => {
+      if (editingRole) {
+        // Update
+        const res = await updateCustomRoleAction({
+          businessId,
+          roleId: editingRole.id,
+          name: roleFormName.trim(),
+          description: roleFormDescription.trim() || undefined,
+          permissions: roleFormPermissions,
+        })
+
+        if (res.success && res.data) {
+          setRoles((prev) => prev.map((r) => (r.id === editingRole.id ? (res.data as CustomRoleDTO) : r)))
+          setIsRoleModalOpen(false)
+          setSuccessMsg(isAr ? `تم تحديث الدور (${res.data.name}) بنجاح!` : 'Role updated successfully!')
+          setTimeout(() => setSuccessMsg(null), 4000)
+        } else {
+          setErrorMsg(res.error || 'Failed to update role')
+        }
+      } else {
+        // Create New
+        const res = await createCustomRoleAction({
+          businessId,
+          name: roleFormName.trim(),
+          description: roleFormDescription.trim() || undefined,
+          permissions: roleFormPermissions,
+        })
+
+        if (res.success && res.data) {
+          setRoles((prev) => [...prev, res.data as CustomRoleDTO])
+          setIsRoleModalOpen(false)
+          setSuccessMsg(isAr ? `تم إنشاء الدور الوظيفي الجديد (${res.data.name}) بنجاح!` : 'Custom role created successfully!')
+          setTimeout(() => setSuccessMsg(null), 4000)
+        } else {
+          setErrorMsg(res.error || 'Failed to create role')
+        }
+      }
+    })
+  }
+
+  // Delete Custom Role
+  function handleDeleteRole(role: CustomRoleDTO) {
+    if (role.isSystem) return
+    if (!confirm(t.confirmDeleteRole)) return
+
+    setErrorMsg(null)
+    setSuccessMsg(null)
+
+    startTransition(async () => {
+      const res = await deleteCustomRoleAction({
+        businessId,
+        roleId: role.id,
+      })
+
+      if (res.success) {
+        setRoles((prev) => prev.filter((r) => r.id !== role.id))
+        setSuccessMsg(isAr ? `تم حذف الدور (${role.name}) بنجاح` : 'Role deleted successfully')
+        setTimeout(() => setSuccessMsg(null), 3000)
+      } else {
+        setErrorMsg(res.error || 'Failed to delete role')
       }
     })
   }
@@ -418,7 +560,7 @@ export default function MembersManagerClient({
     )
   })
 
-  // Filtered permission module groups for Edit Modal
+  // Filtered permission module groups for Edit Member Modal
   const editModalFilteredGroups = useMemo(() => {
     return SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
       if (permActiveModule !== 'all' && group.moduleId !== permActiveModule) {
@@ -442,6 +584,34 @@ export default function MembersManagerClient({
       }
     }).filter(Boolean) as PermissionModuleGroup[]
   }, [permActiveModule, permSearchQuery])
+
+  // Filtered permission module groups for Role Builder Modal
+  const roleFormFilteredGroups = useMemo(() => {
+    return SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
+      if (roleFormActiveModule !== 'all' && group.moduleId !== roleFormActiveModule) {
+        return null
+      }
+      if (!roleFormSearchQuery.trim()) {
+        return group
+      }
+      const q = roleFormSearchQuery.toLowerCase().trim()
+      const matchingPerms = group.permissions.filter(
+        (p) =>
+          p.nameAr.toLowerCase().includes(q) ||
+          p.nameEn.toLowerCase().includes(q) ||
+          p.code.toLowerCase().includes(q) ||
+          p.descriptionAr.toLowerCase().includes(q)
+      )
+      if (matchingPerms.length === 0) return null
+      return {
+        ...group,
+        permissions: matchingPerms,
+      }
+    }).filter(Boolean) as PermissionModuleGroup[]
+  }, [roleFormActiveModule, roleFormSearchQuery])
+
+  // Custom roles list (non-system)
+  const customRolesOnly = roles.filter((r) => !r.isSystem)
 
   return (
     <div>
@@ -513,30 +683,39 @@ export default function MembersManagerClient({
           marginBottom: '1.5rem',
         }}
       >
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
           <button
             type="button"
             onClick={() => setActiveTab('members')}
             className={`btn ${activeTab === 'members' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}
           >
             <Users size={16} />
             {t.teamMembers} ({members.length})
           </button>
           <button
             type="button"
+            onClick={() => setActiveTab('roles')}
+            className={`btn ${activeTab === 'roles' ? 'btn-primary' : 'btn-secondary'}`}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}
+          >
+            <ShieldCheck size={16} />
+            {t.customRolesTab} ({roles.length})
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveTab('matrix')}
             className={`btn ${activeTab === 'matrix' ? 'btn-primary' : 'btn-secondary'}`}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}
           >
             <Shield size={16} />
             {t.permissionsMatrix}
           </button>
         </div>
 
-        {activeTab === 'members' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-            <div style={{ position: 'relative', minWidth: '260px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          {activeTab === 'members' && (
+            <div style={{ position: 'relative', minWidth: '240px' }}>
               <Search
                 size={16}
                 style={{
@@ -560,29 +739,43 @@ export default function MembersManagerClient({
                 }}
               />
             </div>
+          )}
 
-            <button
-              type="button"
-              onClick={() => {
-                setNewFullName('')
-                setNewEmail('')
-                setNewPassword(generateRandomPassword())
-                setNewPhone('')
-                setNewRole('accountant')
-                setNewCustomPermissions([...ROLE_PRESET_PERMISSIONS['accountant']])
-                setIsAddUserModalOpen(true)
-              }}
-              className="btn btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '38px' }}
-            >
-              <UserPlus size={16} />
-              {t.addUserBtn}
-            </button>
-          </div>
-        )}
+          {/* Role creation action */}
+          <button
+            type="button"
+            onClick={handleOpenCreateRole}
+            className="btn btn-secondary"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '38px', fontWeight: 700 }}
+          >
+            <Plus size={16} color="var(--color-brand-500)" />
+            {t.addRoleBtn}
+          </button>
+
+          {/* Direct User creation action */}
+          <button
+            type="button"
+            onClick={() => {
+              setNewFullName('')
+              setNewEmail('')
+              setNewPassword(generateRandomPassword())
+              setNewPhone('')
+              setNewRoleSelection('accountant')
+              setNewCustomPermissions([...ROLE_PRESET_PERMISSIONS['accountant']])
+              setIsAddUserModalOpen(true)
+            }}
+            className="btn btn-primary"
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '38px', fontWeight: 700 }}
+          >
+            <UserPlus size={16} />
+            {t.addUserBtn}
+          </button>
+        </div>
       </div>
 
-      {/* TAB 1: MEMBERS LIST */}
+      {/* ========================================================= */}
+      {/* TAB 1: MEMBERS LIST                                       */}
+      {/* ========================================================= */}
       {activeTab === 'members' && (
         <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
           <div style={{ overflowX: 'auto' }}>
@@ -611,6 +804,7 @@ export default function MembersManagerClient({
                     const isOwner = m.role === 'owner'
                     const isAdmin = m.role === 'administrator'
                     const customPermCount = Array.isArray(m.permissions) ? m.permissions.length : null
+                    const customRoleObj = m.roleId ? roles.find((r) => r.id === m.roleId) : null
 
                     return (
                       <tr key={m.id} style={{ borderBottom: '1px solid var(--border-color)' }} className="table-row-hover">
@@ -646,22 +840,31 @@ export default function MembersManagerClient({
                           </div>
                         </td>
 
-                        {/* Base Role */}
+                        {/* Base Role / Custom Role */}
                         <td style={{ padding: '0.875rem 1rem' }}>
-                          <span
-                            className={`badge ${
-                              isOwner
-                                ? 'badge-primary'
-                                : isAdmin
-                                ? 'badge-info'
-                                : m.role === 'accountant'
-                                ? 'badge-success'
-                                : 'badge-secondary'
-                            }`}
-                            style={{ fontSize: '0.75rem', padding: '0.35rem 0.625rem', fontWeight: 600 }}
-                          >
-                            {t.roles[m.role] || m.role}
-                          </span>
+                          {customRoleObj ? (
+                            <span
+                              className="badge badge-info"
+                              style={{ fontSize: '0.75rem', padding: '0.35rem 0.625rem', fontWeight: 700 }}
+                            >
+                              ⭐ {customRoleObj.name}
+                            </span>
+                          ) : (
+                            <span
+                              className={`badge ${
+                                isOwner
+                                  ? 'badge-primary'
+                                  : isAdmin
+                                  ? 'badge-info'
+                                  : m.role === 'accountant'
+                                  ? 'badge-success'
+                                  : 'badge-secondary'
+                              }`}
+                              style={{ fontSize: '0.75rem', padding: '0.35rem 0.625rem', fontWeight: 600 }}
+                            >
+                              {t.roles[m.role] || m.role}
+                            </span>
+                          )}
                         </td>
 
                         {/* Custom Permissions badge */}
@@ -780,7 +983,202 @@ export default function MembersManagerClient({
         </div>
       )}
 
-      {/* TAB 2: ROLES & PERMISSIONS OVERVIEW */}
+      {/* ========================================================= */}
+      {/* TAB 2: CUSTOM ROLES BUILDER & MANAGEMENT                  */}
+      {/* ========================================================= */}
+      {activeTab === 'roles' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          {/* Top Banner & Quick Add */}
+          <div
+            style={{
+              padding: '1.25rem 1.5rem',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(139, 92, 246, 0.08))',
+              border: '1px solid rgba(99, 102, 241, 0.2)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '1rem',
+            }}
+          >
+            <div>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 800, margin: '0 0 0.25rem 0', color: 'var(--text-primary)' }}>
+                {isAr ? 'إدارة الأدوار الوظيفية وقوالب الصلاحيات المخصصة' : 'Custom Functional Roles & Permissions Builder'}
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
+                {isAr
+                  ? 'قم بإنشاء أدوار وظيفية مخصصة حسب هيكل شركتك (مثل: أمين صندوق، مدير فرع، كاشير، منسق لوجستي) وتعيينها للمستخدمين بضغطة واحدة.'
+                  : 'Define custom organizational roles tailored to your business hierarchy and assign them instantly to staff.'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleOpenCreateRole}
+              className="btn btn-primary"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, padding: '0.625rem 1.25rem' }}
+            >
+              <Plus size={18} />
+              <span>{isAr ? 'إنشاء دور وظيفي جديد' : 'Create Custom Role'}</span>
+            </button>
+          </div>
+
+          {/* Roles Grid */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '1.25rem' }}>
+            {roles.map((r) => {
+              const isOwner = r.code === 'owner'
+              const isAdmin = r.code === 'administrator'
+
+              return (
+                <div
+                  key={r.id}
+                  className="card"
+                  style={{
+                    padding: '1.25rem',
+                    borderRadius: '14px',
+                    border: r.isSystem ? '1px solid var(--border-color)' : '1.5px solid var(--color-brand-500)',
+                    background: 'var(--bg-surface)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.04)',
+                    position: 'relative',
+                  }}
+                >
+                  <div>
+                    {/* Header */}
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                        <div
+                          style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: '10px',
+                            background: r.isSystem
+                              ? 'rgba(100, 116, 139, 0.1)'
+                              : 'linear-gradient(135deg, var(--color-brand-500, #4f46e5), #8b5cf6)',
+                            color: r.isSystem ? 'var(--text-secondary)' : '#ffffff',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontWeight: 700,
+                            flexShrink: 0,
+                          }}
+                        >
+                          {r.isSystem ? <Lock size={18} /> : <ShieldCheck size={20} />}
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '0.9375rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                            {r.name}
+                          </h4>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                            {r.code}
+                          </span>
+                        </div>
+                      </div>
+
+                      <span
+                        className={`badge ${r.isSystem ? 'badge-secondary' : 'badge-primary'}`}
+                        style={{ fontSize: '0.675rem', fontWeight: 700, padding: '0.2rem 0.5rem' }}
+                      >
+                        {r.isSystem ? (isAr ? 'قالب نظام' : 'System') : (isAr ? 'دور مخصص ⭐' : 'Custom ⭐')}
+                      </span>
+                    </div>
+
+                    {/* Description */}
+                    <p style={{ fontSize: '0.78125rem', color: 'var(--text-muted)', minHeight: '38px', margin: '0 0 1rem 0', lineHeight: 1.45 }}>
+                      {r.description || (isAr ? 'لا يوجد وصف محدد لهذا الدور' : 'No description provided')}
+                    </p>
+
+                    {/* Stats Badges */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1rem' }}>
+                      <span
+                        style={{
+                          fontSize: '0.725rem',
+                          fontWeight: 700,
+                          background: 'rgba(99, 102, 241, 0.1)',
+                          color: 'var(--color-brand-500)',
+                          padding: '0.25rem 0.6rem',
+                          borderRadius: '6px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.3rem',
+                        }}
+                      >
+                        <CheckSquare size={13} />
+                        {r.permissions.length} من {ALL_PERMISSION_CODES.length} {isAr ? 'صلاحية' : 'perms'}
+                      </span>
+
+                      <span
+                        style={{
+                          fontSize: '0.725rem',
+                          fontWeight: 600,
+                          background: 'var(--bg-page)',
+                          color: 'var(--text-secondary)',
+                          padding: '0.25rem 0.6rem',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.3rem',
+                        }}
+                      >
+                        <Users size={13} />
+                        {r.memberCount} {isAr ? 'مستخدم مفعل' : 'members'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Card Actions */}
+                  <div
+                    style={{
+                      borderTop: '1px solid var(--border-color)',
+                      paddingTop: '0.875rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    {!r.isSystem ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditRole(r)}
+                          className="btn btn-secondary btn-sm"
+                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 700 }}
+                        >
+                          <Edit3 size={14} />
+                          <span>{isAr ? 'تعديل الدور والصلاحيات' : 'Edit Role'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRole(r)}
+                          className="btn btn-danger btn-sm"
+                          style={{ width: 34, height: 34, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                          title={isAr ? 'حذف الدور' : 'Delete Role'}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </>
+                    ) : (
+                      <div style={{ fontSize: '0.725rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                        <Lock size={13} />
+                        <span>{isAr ? 'قالب نظام أساسي محمي' : 'Core system role protected'}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 3: ROLES & PERMISSIONS OVERVIEW                       */}
+      {/* ========================================================= */}
       {activeTab === 'matrix' && (
         <div className="card" style={{ padding: '1.5rem', border: '1px solid var(--border-color)' }}>
           <div style={{ marginBottom: '1.5rem' }}>
@@ -931,7 +1329,7 @@ export default function MembersManagerClient({
                 <div>
                   <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>{t.addUserBtn}</h3>
                   <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    {isAr ? 'إنشاء حساب مستخدم مباشر وتفعيله فوراً' : 'Create direct user account with immediate access'}
+                    {isAr ? 'إنشاء حساب مستخدم مباشر وتفعيله فوراً وتعيين الدور' : 'Create direct user account with immediate access'}
                   </p>
                 </div>
               </div>
@@ -1023,21 +1421,32 @@ export default function MembersManagerClient({
                   </span>
                 </div>
 
-                {/* Base Role Selector */}
+                {/* Base Role Selector (Including Custom Roles) */}
                 <div style={{ marginBottom: '1.25rem' }}>
-                  <label className="form-label required">{isAr ? 'الدور الأساسي (القالب الافتراضي)' : 'Base Role Template'}</label>
+                  <label className="form-label required">{isAr ? 'الدور الوظيفي (النظامي أو المخصص)' : 'Role Selection'}</label>
                   <select
-                    value={newRole}
-                    onChange={(e) => handleNewRoleChange(e.target.value as MemberRole)}
+                    value={newRoleSelection}
+                    onChange={(e) => handleNewRoleSelectionChange(e.target.value)}
                     className="form-control"
                   >
-                    <option value="accountant">{t.roles.accountant}</option>
-                    <option value="sales_user">{t.roles.sales_user}</option>
-                    <option value="purchase_user">{t.roles.purchase_user}</option>
-                    <option value="inventory_user">{t.roles.inventory_user}</option>
-                    <option value="viewer">{t.roles.viewer}</option>
-                    <option value="administrator">{t.roles.administrator}</option>
-                    <option value="custom">{t.roles.custom}</option>
+                    <optgroup label={isAr ? 'قوالب النظام الأساسية' : 'System Standard Roles'}>
+                      <option value="accountant">{t.roles.accountant}</option>
+                      <option value="sales_user">{t.roles.sales_user}</option>
+                      <option value="purchase_user">{t.roles.purchase_user}</option>
+                      <option value="inventory_user">{t.roles.inventory_user}</option>
+                      <option value="viewer">{t.roles.viewer}</option>
+                      <option value="administrator">{t.roles.administrator}</option>
+                      <option value="custom">{t.roles.custom}</option>
+                    </optgroup>
+                    {customRolesOnly.length > 0 && (
+                      <optgroup label={isAr ? 'الأدوار الوظيفية المخصصة للمنشأة ⭐' : 'Custom Roles ⭐'}>
+                        {customRolesOnly.map((cr) => (
+                          <option key={cr.id} value={`custom_role_${cr.id}`}>
+                            ⭐ {cr.name} ({cr.permissions.length} {isAr ? 'صلاحية' : 'perms'})
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                 </div>
               </div>
@@ -1086,10 +1495,7 @@ export default function MembersManagerClient({
         <div
           style={{
             position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
+            inset: 0,
             width: '100vw',
             height: '100vh',
             zIndex: 999999,
@@ -1165,7 +1571,6 @@ export default function MembersManagerClient({
 
               {/* View Switcher Toggle & Close Button */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
-                {/* Visual View Switcher */}
                 <div
                   style={{
                     display: 'flex',
@@ -1223,7 +1628,7 @@ export default function MembersManagerClient({
               </div>
             </div>
 
-            {/* Top Toolbar: Quick Presets, View Mode & Search */}
+            {/* Top Toolbar: Quick Presets (Including Custom Roles) & Search */}
             <div
               style={{
                 padding: '0.75rem 1.5rem',
@@ -1256,6 +1661,23 @@ export default function MembersManagerClient({
                     {t.roles[r] || r}
                   </button>
                 ))}
+
+                {/* Custom Roles Presets */}
+                {customRolesOnly.map((cr) => (
+                  <button
+                    key={cr.id}
+                    type="button"
+                    onClick={() => {
+                      setEditPermissionsRole('custom')
+                      setEditSelectedPermissions([...cr.permissions])
+                    }}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.725rem', padding: '0.25rem 0.55rem', borderRadius: '6px', fontWeight: 700, borderColor: 'var(--color-brand-500)', color: 'var(--color-brand-500)' }}
+                  >
+                    ⭐ {cr.name}
+                  </button>
+                ))}
+
                 <button
                   type="button"
                   onClick={() => setEditSelectedPermissions([...ALL_PERMISSION_CODES])}
@@ -1275,7 +1697,7 @@ export default function MembersManagerClient({
                 </button>
               </div>
 
-              {/* View Switcher In Toolbar (Guarantees 100% visibility) & Search */}
+              {/* View Switcher In Toolbar & Search */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <div
                   style={{
@@ -1433,7 +1855,6 @@ export default function MembersManagerClient({
                           const allChecked = moduleCodes.every((c) => editSelectedPermissions.includes(c))
                           const enabledCount = moduleCodes.filter((c) => editSelectedPermissions.includes(c)).length
 
-                          // Match perms by action
                           const viewPerm = group.permissions.find((p) => p.action === 'view')
                           const createPerm = group.permissions.find((p) => p.action === 'create')
                           const editPerm = group.permissions.find((p) => p.action === 'edit')
@@ -1452,7 +1873,6 @@ export default function MembersManagerClient({
                               }}
                               className="table-row-hover"
                             >
-                              {/* Module Title & Row Toggle */}
                               <td style={{ padding: '0.875rem 1rem' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
@@ -1481,7 +1901,6 @@ export default function MembersManagerClient({
                                 </div>
                               </td>
 
-                              {/* View Action Cell */}
                               <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
                                 {viewPerm ? (
                                   <label
@@ -1508,7 +1927,6 @@ export default function MembersManagerClient({
                                 )}
                               </td>
 
-                              {/* Create Action Cell */}
                               <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
                                 {createPerm ? (
                                   <label
@@ -1535,7 +1953,6 @@ export default function MembersManagerClient({
                                 )}
                               </td>
 
-                              {/* Edit Action Cell */}
                               <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
                                 {editPerm ? (
                                   <label
@@ -1562,7 +1979,6 @@ export default function MembersManagerClient({
                                 )}
                               </td>
 
-                              {/* Delete Action Cell */}
                               <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
                                 {deletePerm ? (
                                   <label
@@ -1589,7 +2005,6 @@ export default function MembersManagerClient({
                                 )}
                               </td>
 
-                              {/* Advanced / Post / Manage Actions Cell */}
                               <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
                                 {advPerms.length > 0 ? (
                                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
@@ -1630,7 +2045,6 @@ export default function MembersManagerClient({
                                 )}
                               </td>
 
-                              {/* Export Action Cell */}
                               <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
                                 {exportPerm ? (
                                   <label
@@ -1683,7 +2097,6 @@ export default function MembersManagerClient({
                     flexShrink: 0,
                   }}
                 >
-                  {/* All Modules Tab */}
                   <button
                     type="button"
                     onClick={() => setPermActiveModule('all')}
@@ -1724,7 +2137,6 @@ export default function MembersManagerClient({
 
                   <div style={{ height: '1px', background: 'var(--border-color)', margin: '0.35rem 0.5rem' }} />
 
-                  {/* Individual Modules */}
                   {SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
                     const moduleCodes = group.permissions.map((p) => p.code)
                     const enabledCount = moduleCodes.filter((c) => editSelectedPermissions.includes(c)).length
@@ -1811,7 +2223,6 @@ export default function MembersManagerClient({
                               boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
                             }}
                           >
-                            {/* Module Header Bar */}
                             <div
                               style={{
                                 padding: '0.75rem 1rem',
@@ -1841,7 +2252,6 @@ export default function MembersManagerClient({
                               </button>
                             </div>
 
-                            {/* Permissions Rows */}
                             <div style={{ display: 'flex', flexDirection: 'column' }}>
                               {group.permissions.map((p, idx) => {
                                 const isChecked = editSelectedPermissions.includes(p.code)
@@ -1863,12 +2273,11 @@ export default function MembersManagerClient({
                                       gap: '1rem',
                                     }}
                                   >
-                                    {/* Right side: Checkbox + info */}
                                     <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1 }}>
                                       <input
                                         type="checkbox"
                                         checked={isChecked}
-                                        onChange={() => {}} // Handled by parent div
+                                        onChange={() => {}}
                                         style={{
                                           width: '18px',
                                           height: '18px',
@@ -1901,7 +2310,6 @@ export default function MembersManagerClient({
                                       </div>
                                     </div>
 
-                                    {/* Left side: Code Badge */}
                                     <span
                                       style={{
                                         fontSize: '0.675rem',
@@ -1977,7 +2385,927 @@ export default function MembersManagerClient({
       )}
 
       {/* ========================================================= */}
-      {/* MODAL 3: DIRECT RESET PASSWORD MODAL                      */}
+      {/* MODAL 3: CUSTOM ROLE BUILDER MODAL (CREATE / EDIT ROLE)   */}
+      {/* ========================================================= */}
+      {mounted && isRoleModalOpen && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            width: '100vw',
+            height: '100vh',
+            zIndex: 999999,
+            backgroundColor: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '1rem',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '1120px',
+              height: 'calc(100vh - 2.5rem)',
+              maxHeight: '92vh',
+              backgroundColor: 'var(--bg-surface, #ffffff)',
+              borderRadius: '16px',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              border: '1px solid var(--border-color, #e2e8f0)',
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '1.25rem 1.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'var(--bg-page)',
+                flexShrink: 0,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '10px',
+                    background: 'linear-gradient(135deg, var(--color-brand-500, #4f46e5), #8b5cf6)',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontWeight: 700,
+                    fontSize: '1.125rem',
+                    boxShadow: '0 4px 10px rgba(99, 102, 241, 0.25)',
+                    flexShrink: 0,
+                  }}
+                >
+                  <ShieldCheck size={22} />
+                </div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 800 }}>
+                      {editingRole
+                        ? (isAr ? `تعديل الدور الوظيفي: ${editingRole.name}` : `Edit Custom Role: ${editingRole.name}`)
+                        : (isAr ? 'إنشاء دور وظيفي مخصص جديد' : 'Create New Custom Role')}
+                    </h3>
+                    <span className="badge badge-primary" style={{ fontSize: '0.75rem', fontWeight: 700 }}>
+                      {roleFormPermissions.length} / {ALL_PERMISSION_CODES.length} {isAr ? 'صلاحية مفعلة' : 'active'}
+                    </span>
+                  </div>
+                  <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {isAr
+                      ? 'حدد اسم الدور ووصفه، واختر الصلاحيات الممنوحة له بدقة من المصفوفة أو القائمة'
+                      : 'Define role details and fine-tune its permissions'}
+                  </p>
+                </div>
+              </div>
+
+              {/* View Switcher Toggle & Close Button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.875rem' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    background: 'var(--bg-surface, #ffffff)',
+                    padding: '0.25rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setRoleFormViewMode('matrix')}
+                    className={`btn btn-sm ${roleFormViewMode === 'matrix' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.35rem 0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      borderRadius: '6px',
+                    }}
+                  >
+                    <Table size={14} />
+                    <span>{t.viewMatrixMode}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRoleFormViewMode('detailed')}
+                    className={`btn btn-sm ${roleFormViewMode === 'detailed' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      padding: '0.35rem 0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      borderRadius: '6px',
+                    }}
+                  >
+                    <List size={14} />
+                    <span>{t.viewDetailedMode}</span>
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsRoleModalOpen(false)}
+                  className="btn btn-secondary btn-sm"
+                  style={{ width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Role Metadata Input Fields */}
+            <div
+              style={{
+                padding: '0.875rem 1.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                background: 'var(--bg-page)',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                gap: '1rem',
+                flexShrink: 0,
+              }}
+            >
+              <div>
+                <label className="form-label required" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                  {isAr ? 'اسم الدور الوظيفي' : 'Role Name'}
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={roleFormName}
+                  onChange={(e) => setRoleFormName(e.target.value)}
+                  placeholder={isAr ? 'مثال: أمين صندوق ومحصل، مدير مشتريات' : 'e.g. Chief Cashier, Branch Supervisor'}
+                  className="form-control"
+                  style={{ height: '36px', fontSize: '0.8125rem' }}
+                />
+              </div>
+
+              <div>
+                <label className="form-label" style={{ fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                  {isAr ? 'الوصف الوظيفي والمسؤوليات' : 'Role Description'}
+                </label>
+                <input
+                  type="text"
+                  value={roleFormDescription}
+                  onChange={(e) => setRoleFormDescription(e.target.value)}
+                  placeholder={isAr ? 'وصف مختصر للمهام والصلاحيات الممنوحة لهذا الدور' : 'Brief description of duties and scope'}
+                  className="form-control"
+                  style={{ height: '36px', fontSize: '0.8125rem' }}
+                />
+              </div>
+            </div>
+
+            {/* Quick Presets & Search Toolbar */}
+            <div
+              style={{
+                padding: '0.75rem 1.5rem',
+                borderBottom: '1px solid var(--border-color)',
+                background: 'var(--bg-surface)',
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '0.75rem',
+                flexShrink: 0,
+              }}
+            >
+              {/* Role Presets */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.375rem' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 800, color: 'var(--text-muted)', marginInlineEnd: '0.25rem' }}>
+                  {isAr ? 'قوالب للبدء منها:' : 'Presets:'}
+                </span>
+                {(['accountant', 'sales_user', 'purchase_user', 'inventory_user', 'viewer'] as MemberRole[]).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRoleFormPermissions([...(ROLE_PRESET_PERMISSIONS[r] || [])])}
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.725rem', padding: '0.25rem 0.55rem', borderRadius: '6px', fontWeight: 600 }}
+                  >
+                    {t.roles[r] || r}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setRoleFormPermissions([...ALL_PERMISSION_CODES])}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.725rem', padding: '0.25rem 0.55rem', borderRadius: '6px', color: '#10b981', fontWeight: 700 }}
+                >
+                  <Check size={13} style={{ marginInlineEnd: '0.2rem' }} />
+                  {isAr ? 'تحديد الكل' : 'Select All'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRoleFormPermissions([])}
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.725rem', padding: '0.25rem 0.55rem', borderRadius: '6px', color: '#ef4444', fontWeight: 700 }}
+                >
+                  {isAr ? 'إلغاء الكل' : 'Clear All'}
+                </button>
+              </div>
+
+              {/* View Switcher In Toolbar & Search */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    background: 'var(--bg-page)',
+                    padding: '0.2rem',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setRoleFormViewMode('matrix')}
+                    className={`btn btn-sm ${roleFormViewMode === 'matrix' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.25rem 0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      borderRadius: '5px',
+                    }}
+                  >
+                    <Table size={13} />
+                    <span>{isAr ? 'مصفوفة' : 'Matrix'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRoleFormViewMode('detailed')}
+                    className={`btn btn-sm ${roleFormViewMode === 'detailed' ? 'btn-primary' : 'btn-secondary'}`}
+                    style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.25rem 0.6rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                      borderRadius: '5px',
+                    }}
+                  >
+                    <List size={13} />
+                    <span>{isAr ? 'تفصيلي' : 'Detailed'}</span>
+                  </button>
+                </div>
+
+                <div style={{ position: 'relative', width: '220px' }}>
+                  <Search
+                    size={14}
+                    style={{
+                      position: 'absolute',
+                      [isAr ? 'right' : 'left']: '0.625rem',
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      color: 'var(--text-muted)',
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={roleFormSearchQuery}
+                    onChange={(e) => setRoleFormSearchQuery(e.target.value)}
+                    placeholder={isAr ? 'تصفية الصلاحيات...' : 'Filter permissions...'}
+                    className="form-control"
+                    style={{
+                      [isAr ? 'paddingRight' : 'paddingLeft']: '2rem',
+                      height: '34px',
+                      fontSize: '0.75rem',
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Role Builder Body: VIEW 1 — MATRIX GRID TABLE */}
+            {roleFormViewMode === 'matrix' && (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+                <div className="card" style={{ padding: 0, overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: isAr ? 'right' : 'left' }}>
+                      <thead>
+                        <tr style={{ background: 'var(--bg-page)', borderBottom: '2px solid var(--border-color)' }}>
+                          <th style={{ padding: '0.875rem 1rem', fontSize: '0.75rem', fontWeight: 700, width: '26%' }}>
+                            {isAr ? 'الوحدة / النظام' : 'System Module'}
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>👁️ {isAr ? 'عرض' : 'View'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('view', roleFormPermissions, setRoleFormPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>➕ {isAr ? 'إنشاء' : 'Create'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('create', roleFormPermissions, setRoleFormPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#059669', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>✏️ {isAr ? 'تعديل' : 'Edit'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('edit', roleFormPermissions, setRoleFormPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#d97706', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>🗑️ {isAr ? 'حذف' : 'Delete'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('delete', roleFormPermissions, setRoleFormPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#dc2626', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '14%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>⚡ {isAr ? 'إجراءات متقدمة' : 'Advanced'}</span>
+                            </div>
+                          </th>
+                          <th style={{ padding: '0.75rem 0.5rem', fontSize: '0.75rem', fontWeight: 700, textAlign: 'center', width: '12%' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                              <span>📥 {isAr ? 'تصدير' : 'Export'}</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleActionAcrossSystem('export', roleFormPermissions, setRoleFormPermissions)}
+                                style={{ background: 'none', border: 'none', color: '#0891b2', fontSize: '0.65rem', cursor: 'pointer', textDecoration: 'underline', fontWeight: 700 }}
+                              >
+                                {isAr ? 'تحديد' : 'Toggle'}
+                              </button>
+                            </div>
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
+                          const moduleCodes = group.permissions.map((p) => p.code)
+                          const allChecked = moduleCodes.every((c) => roleFormPermissions.includes(c))
+                          const enabledCount = moduleCodes.filter((c) => roleFormPermissions.includes(c)).length
+
+                          const viewPerm = group.permissions.find((p) => p.action === 'view')
+                          const createPerm = group.permissions.find((p) => p.action === 'create')
+                          const editPerm = group.permissions.find((p) => p.action === 'edit')
+                          const deletePerm = group.permissions.find((p) => p.action === 'delete')
+                          const exportPerm = group.permissions.find((p) => p.action === 'export')
+                          const advPerms = group.permissions.filter(
+                            (p) => p.action === 'manage' || p.action === 'post' || (p.action !== 'view' && p.action !== 'create' && p.action !== 'edit' && p.action !== 'delete' && p.action !== 'export')
+                          )
+
+                          return (
+                            <tr
+                              key={group.moduleId}
+                              style={{
+                                borderBottom: '1px solid var(--border-color)',
+                                backgroundColor: enabledCount > 0 ? 'rgba(99, 102, 241, 0.02)' : 'transparent',
+                              }}
+                              className="table-row-hover"
+                            >
+                              <td style={{ padding: '0.875rem 1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
+                                    <span style={{ color: 'var(--color-brand-500)' }}>
+                                      {MODULE_ICONS[group.moduleId] || <Shield size={16} />}
+                                    </span>
+                                    <div>
+                                      <div style={{ fontWeight: 700, fontSize: '0.875rem', color: 'var(--text-primary)' }}>
+                                        {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
+                                      </div>
+                                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                        {enabledCount} من {moduleCodes.length} {isAr ? 'مفعلة' : 'active'}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleModuleInList(group, roleFormPermissions, setRoleFormPermissions)}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ fontSize: '0.675rem', padding: '0.15rem 0.45rem', borderRadius: '4px' }}
+                                    title={isAr ? 'تحديد / إلغاء تحديد كامل الصف' : 'Toggle entire row'}
+                                  >
+                                    {allChecked ? (isAr ? 'إلغاء' : 'Clear') : (isAr ? 'تحديد' : 'All')}
+                                  </button>
+                                </div>
+                              </td>
+
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {viewPerm ? (
+                                  <label
+                                    title={`${viewPerm.nameAr} (${viewPerm.code})\n${viewPerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: roleFormPermissions.includes(viewPerm.code) ? 'rgba(59, 130, 246, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={roleFormPermissions.includes(viewPerm.code)}
+                                      onChange={() => togglePermissionInList(viewPerm.code, roleFormPermissions, setRoleFormPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#2563eb' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {createPerm ? (
+                                  <label
+                                    title={`${createPerm.nameAr} (${createPerm.code})\n${createPerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: roleFormPermissions.includes(createPerm.code) ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={roleFormPermissions.includes(createPerm.code)}
+                                      onChange={() => togglePermissionInList(createPerm.code, roleFormPermissions, setRoleFormPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#059669' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {editPerm ? (
+                                  <label
+                                    title={`${editPerm.nameAr} (${editPerm.code})\n${editPerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: roleFormPermissions.includes(editPerm.code) ? 'rgba(245, 158, 11, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={roleFormPermissions.includes(editPerm.code)}
+                                      onChange={() => togglePermissionInList(editPerm.code, roleFormPermissions, setRoleFormPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#d97706' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {deletePerm ? (
+                                  <label
+                                    title={`${deletePerm.nameAr} (${deletePerm.code})\n${deletePerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: roleFormPermissions.includes(deletePerm.code) ? 'rgba(239, 68, 68, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={roleFormPermissions.includes(deletePerm.code)}
+                                      onChange={() => togglePermissionInList(deletePerm.code, roleFormPermissions, setRoleFormPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#dc2626' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {advPerms.length > 0 ? (
+                                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+                                    {advPerms.map((ap) => {
+                                      const isAct = roleFormPermissions.includes(ap.code)
+                                      return (
+                                        <label
+                                          key={ap.code}
+                                          title={`${ap.nameAr} (${ap.code})\n${ap.descriptionAr}`}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.35rem',
+                                            cursor: 'pointer',
+                                            fontSize: '0.6875rem',
+                                            fontWeight: 600,
+                                            padding: '0.15rem 0.35rem',
+                                            borderRadius: '4px',
+                                            background: isAct ? 'rgba(168, 85, 247, 0.12)' : 'rgba(100, 116, 139, 0.06)',
+                                            color: isAct ? '#7c3aed' : 'var(--text-muted)',
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={isAct}
+                                            onChange={() => togglePermissionInList(ap.code, roleFormPermissions, setRoleFormPermissions)}
+                                            style={{ width: '14px', height: '14px', cursor: 'pointer', accentColor: '#7c3aed' }}
+                                          />
+                                          <span style={{ maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            {ap.nameAr.split(' ')[0]}
+                                          </span>
+                                        </label>
+                                      )
+                                    })}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+
+                              <td style={{ padding: '0.625rem 0.5rem', textAlign: 'center' }}>
+                                {exportPerm ? (
+                                  <label
+                                    title={`${exportPerm.nameAr} (${exportPerm.code})\n${exportPerm.descriptionAr}`}
+                                    style={{
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      cursor: 'pointer',
+                                      padding: '0.35rem',
+                                      borderRadius: '6px',
+                                      background: roleFormPermissions.includes(exportPerm.code) ? 'rgba(6, 182, 212, 0.12)' : 'transparent',
+                                    }}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={roleFormPermissions.includes(exportPerm.code)}
+                                      onChange={() => togglePermissionInList(exportPerm.code, roleFormPermissions, setRoleFormPermissions)}
+                                      style={{ width: '17px', height: '17px', cursor: 'pointer', accentColor: '#0891b2' }}
+                                    />
+                                  </label>
+                                ) : (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>—</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Role Builder Body: VIEW 2 — DETAILED LIST VIEW */}
+            {roleFormViewMode === 'detailed' && (
+              <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    width: '240px',
+                    borderInlineEnd: '1px solid var(--border-color)',
+                    background: 'var(--bg-page)',
+                    overflowY: 'auto',
+                    padding: '0.75rem 0.5rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.25rem',
+                    flexShrink: 0,
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setRoleFormActiveModule('all')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.625rem 0.75rem',
+                      borderRadius: '8px',
+                      border: 'none',
+                      background: roleFormActiveModule === 'all' ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                      color: roleFormActiveModule === 'all' ? 'var(--color-brand-500)' : 'var(--text-primary)',
+                      fontWeight: roleFormActiveModule === 'all' ? 700 : 500,
+                      fontSize: '0.8125rem',
+                      cursor: 'pointer',
+                      textAlign: isAr ? 'right' : 'left',
+                      width: '100%',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Layers size={16} />
+                      <span>{t.allModules}</span>
+                    </div>
+                    <span
+                      style={{
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        padding: '0.1rem 0.4rem',
+                        borderRadius: '10px',
+                        background: roleFormActiveModule === 'all' ? 'var(--color-brand-500)' : 'rgba(100, 116, 139, 0.15)',
+                        color: roleFormActiveModule === 'all' ? '#ffffff' : 'var(--text-muted)',
+                      }}
+                    >
+                      {roleFormPermissions.length}
+                    </span>
+                  </button>
+
+                  <div style={{ height: '1px', background: 'var(--border-color)', margin: '0.35rem 0.5rem' }} />
+
+                  {SYSTEM_PERMISSIONS_REGISTRY.map((group) => {
+                    const moduleCodes = group.permissions.map((p) => p.code)
+                    const enabledCount = moduleCodes.filter((c) => roleFormPermissions.includes(c)).length
+                    const isSelected = roleFormActiveModule === group.moduleId
+                    const allActive = enabledCount === moduleCodes.length && moduleCodes.length > 0
+
+                    return (
+                      <button
+                        key={group.moduleId}
+                        type="button"
+                        onClick={() => setRoleFormActiveModule(group.moduleId)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '0.625rem 0.75rem',
+                          borderRadius: '8px',
+                          border: 'none',
+                          background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'transparent',
+                          color: isSelected ? 'var(--color-brand-500)' : 'var(--text-primary)',
+                          fontWeight: isSelected ? 700 : 500,
+                          fontSize: '0.8125rem',
+                          cursor: 'pointer',
+                          textAlign: isAr ? 'right' : 'left',
+                          width: '100%',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                          <span style={{ color: isSelected ? 'var(--color-brand-500)' : 'var(--text-muted)' }}>
+                            {MODULE_ICONS[group.moduleId] || <Shield size={16} />}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
+                          </span>
+                        </div>
+
+                        <span
+                          style={{
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            padding: '0.1rem 0.4rem',
+                            borderRadius: '10px',
+                            background: allActive
+                              ? 'rgba(16, 185, 129, 0.15)'
+                              : enabledCount > 0
+                              ? 'rgba(99, 102, 241, 0.15)'
+                              : 'rgba(100, 116, 139, 0.12)',
+                            color: allActive
+                              ? '#059669'
+                              : enabledCount > 0
+                              ? 'var(--color-brand-500)'
+                              : 'var(--text-muted)',
+                          }}
+                        >
+                          {enabledCount}/{moduleCodes.length}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto', padding: '1.25rem' }}>
+                  {roleFormFilteredGroups.length === 0 ? (
+                    <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                      <Search size={32} style={{ margin: '0 auto 0.75rem', opacity: 0.4 }} />
+                      <div style={{ fontWeight: 600 }}>{isAr ? 'لا توجد صلاحيات مطابقة للبحث' : 'No matching permissions found'}</div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                      {roleFormFilteredGroups.map((group) => {
+                        const moduleCodes = group.permissions.map((p) => p.code)
+                        const allChecked = moduleCodes.every((c) => roleFormPermissions.includes(c))
+
+                        return (
+                          <div
+                            key={group.moduleId}
+                            style={{
+                              border: '1px solid var(--border-color)',
+                              borderRadius: '12px',
+                              background: 'var(--bg-surface)',
+                              overflow: 'hidden',
+                              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+                            }}
+                          >
+                            <div
+                              style={{
+                                padding: '0.75rem 1rem',
+                                background: 'var(--bg-page)',
+                                borderBottom: '1px solid var(--border-color)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--color-brand-500)' }}>
+                                {MODULE_ICONS[group.moduleId] || <Shield size={18} />}
+                                <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 800 }}>
+                                  {isAr ? group.nameAr : isTr ? group.nameTr : group.nameEn}
+                                </h4>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => toggleModuleInList(group, roleFormPermissions, setRoleFormPermissions)}
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.725rem', padding: '0.2rem 0.6rem' }}
+                              >
+                                {allChecked
+                                  ? (isAr ? 'إلغاء تحديد الوحدة' : 'Deselect Module')
+                                  : (isAr ? 'تحديد كافة الوحدة' : 'Select All')}
+                              </button>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column' }}>
+                              {group.permissions.map((p, idx) => {
+                                const isChecked = roleFormPermissions.includes(p.code)
+                                const actionInfo = ACTION_COLORS[p.action] || ACTION_COLORS.manage
+
+                                return (
+                                  <div
+                                    key={p.code}
+                                    onClick={() => togglePermissionInList(p.code, roleFormPermissions, setRoleFormPermissions)}
+                                    style={{
+                                      padding: '0.875rem 1rem',
+                                      borderBottom: idx === group.permissions.length - 1 ? 'none' : '1px solid var(--border-color)',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      cursor: 'pointer',
+                                      backgroundColor: isChecked ? 'rgba(99, 102, 241, 0.03)' : 'transparent',
+                                      transition: 'background-color 0.15s ease',
+                                      gap: '1rem',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', flex: 1 }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {}}
+                                        style={{
+                                          width: '18px',
+                                          height: '18px',
+                                          marginTop: '0.15rem',
+                                          cursor: 'pointer',
+                                          accentColor: 'var(--color-brand-500, #4f46e5)',
+                                        }}
+                                      />
+                                      <div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.2rem' }}>
+                                          <span style={{ fontSize: '0.875rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                                            {isAr ? p.nameAr : isTr ? p.nameTr : p.nameEn}
+                                          </span>
+                                          <span
+                                            style={{
+                                              fontSize: '0.65rem',
+                                              fontWeight: 700,
+                                              background: actionInfo.bg,
+                                              color: actionInfo.text,
+                                              padding: '0.1rem 0.4rem',
+                                              borderRadius: '4px',
+                                            }}
+                                          >
+                                            {isAr ? actionInfo.labelAr : actionInfo.labelEn}
+                                          </span>
+                                        </div>
+                                        <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
+                                          {isAr ? p.descriptionAr : isTr ? p.descriptionTr : p.descriptionEn}
+                                        </p>
+                                      </div>
+                                    </div>
+
+                                    <span
+                                      style={{
+                                        fontSize: '0.675rem',
+                                        fontFamily: 'monospace',
+                                        color: 'var(--text-muted)',
+                                        background: 'var(--bg-page)',
+                                        padding: '0.15rem 0.45rem',
+                                        borderRadius: '4px',
+                                        border: '1px solid var(--border-color)',
+                                        flexShrink: 0,
+                                      }}
+                                    >
+                                      {p.code}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Role Builder Footer */}
+            <div
+              style={{
+                padding: '1rem 1.5rem',
+                borderTop: '1px solid var(--border-color)',
+                background: 'var(--bg-page)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexShrink: 0,
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  {isAr ? 'الصلاحيات المعتمدة للدور:' : 'Configured Permissions:'}
+                </span>
+                <span className="badge badge-primary" style={{ fontSize: '0.8125rem', padding: '0.3rem 0.6rem', fontWeight: 700 }}>
+                  {roleFormPermissions.length} من {ALL_PERMISSION_CODES.length} {isAr ? 'صلاحية' : 'permissions'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsRoleModalOpen(false)}
+                  className="btn btn-secondary"
+                  disabled={isPending}
+                >
+                  {isAr ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveRole}
+                  className="btn btn-primary"
+                  disabled={isPending}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700 }}
+                >
+                  {isPending && <Loader2 size={16} className="animate-spin" />}
+                  {editingRole ? (isAr ? 'حفظ تعديلات الدور' : 'Save Role Changes') : (isAr ? 'اعتماد وإنشاء الدور' : 'Create Role')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 4: DIRECT RESET PASSWORD MODAL                      */}
       {/* ========================================================= */}
       {mounted && resettingMember && createPortal(
         <div

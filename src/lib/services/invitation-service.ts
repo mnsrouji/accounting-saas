@@ -25,6 +25,7 @@ export interface CreateDirectUserParams {
   password?: string
   phone?: string
   role: MemberRole
+  roleId?: string | null
   customPermissions?: string[]
   adminUserId?: string
 }
@@ -462,6 +463,7 @@ export class InvitationService {
     }
 
     // 4. Upsert active business membership
+    const { roleId } = params
     const existingMembership = await prisma.businessUser.findUnique({
       where: {
         userId_businessId: {
@@ -477,6 +479,7 @@ export class InvitationService {
         where: { id: existingMembership.id },
         data: {
           role,
+          ...(roleId !== undefined ? { roleId } : {}),
           status: 'active',
           permissions: customPermissions ? (customPermissions as any) : existingMembership.permissions,
           joinedAt: existingMembership.joinedAt || new Date(),
@@ -489,6 +492,7 @@ export class InvitationService {
           businessId,
           userId: user.id,
           role,
+          roleId: roleId || null,
           status: 'active',
           permissions: customPermissions ? (customPermissions as any) : null,
           invitedBy: adminUserId,
@@ -510,6 +514,7 @@ export class InvitationService {
         email: normalizedEmail,
         fullName: fullName.trim(),
         role,
+        roleId: roleId || null,
         permissionsCount: customPermissions?.length || 0,
         directCreated: true,
       },
@@ -526,6 +531,7 @@ export class InvitationService {
     targetUserId: string,
     permissions: string[],
     role?: MemberRole,
+    roleId?: string | null,
     adminUserId?: string
   ) {
     const membership = await prisma.businessUser.findUnique({
@@ -546,6 +552,7 @@ export class InvitationService {
       data: {
         permissions: permissions as any,
         ...(role ? { role } : {}),
+        ...(roleId !== undefined ? { roleId } : {}),
       },
       include: { user: true, roleModel: true },
     })
@@ -557,7 +564,7 @@ export class InvitationService {
       module: 'members',
       recordType: 'business_user_permissions',
       recordId: membership.id,
-      newValues: { permissionsCount: permissions.length, permissions, role },
+      newValues: { permissionsCount: permissions.length, permissions, role, roleId },
     })
 
     return updated
