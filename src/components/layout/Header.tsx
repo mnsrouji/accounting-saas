@@ -7,9 +7,11 @@ import { logoutAction } from '@/actions/auth/auth-actions'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 
 import { useLocale } from 'next-intl'
+import { useParams } from 'next/navigation'
 import { Breadcrumbs } from '@/components/ui/Breadcrumbs'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher'
+import { NotificationDropdown } from '@/components/layout/NotificationDropdown'
 import { ToastProvider } from '@/components/ui/ToastProvider'
 import { GlobalSearchModal } from '@/components/layout/GlobalSearchModal'
 import { useSidebar } from '@/components/layout/AppShell'
@@ -23,6 +25,8 @@ interface HeaderProps {
 
 export function Header({ user, memberships }: HeaderProps) {
   const locale = useLocale()
+  const params = useParams()
+  const activeBusinessId = (params?.businessId as string) || memberships[0]?.businessId
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const { toggleMobile } = useSidebar()
 
@@ -106,36 +110,8 @@ export function Header({ user, memberships }: HeaderProps) {
         {/* Theme Toggle */}
         <ThemeToggle />
 
-        {/* Notifications */}
-        <button
-          id="notifications-btn"
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 8,
-            border: '1px solid var(--border-color, #e2e8f0)',
-            background: 'var(--bg-surface, white)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            color: 'var(--text-secondary, #64748b)',
-            position: 'relative',
-          }}
-          aria-label={t.notifications}
-          title={t.notifications}
-        >
-          <Bell size={16} />
-          <span style={{
-            position: 'absolute',
-            top: 6,
-            right: 6,
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            background: '#6366f1',
-          }} />
-        </button>
+        {/* Dynamic Notifications Dropdown */}
+        <NotificationDropdown businessId={activeBusinessId} userId={user.id} />
 
         {/* User Menu */}
         <div style={{ position: 'relative' }}>
