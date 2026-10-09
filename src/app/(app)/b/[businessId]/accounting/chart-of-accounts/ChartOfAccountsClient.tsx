@@ -33,7 +33,9 @@ import {
   checkAccountDeletabilityAction,
   deleteChartOfAccountAction,
   toggleChartOfAccountStatusAction,
+  syncStandardChartOfAccountsAction,
 } from '@/actions/accounting/accounting-actions'
+import { Sparkles, ShieldCheck } from 'lucide-react'
 
 export interface AccountItem {
   id: string
@@ -88,7 +90,47 @@ export function ChartOfAccountsClient({
   const [isEditOpen, setIsEditOpen] = useState(false)
   const [isExcelModalOpen, setIsExcelModalOpen] = useState(false)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+
+  // Handle Smart Sync Standard Chart of Accounts
+  const handleSyncStandardCOA = async () => {
+    setIsSyncing(true)
+    try {
+      const res = await syncStandardChartOfAccountsAction(businessId)
+      if (res.success) {
+        toast.success(
+          isAr
+            ? `تمت مزامنة وتحديث الشجرة بنجاح! تم إنشاء (${res.createdCount}) حساب وتحديث (${res.updatedCount}) حساب.`
+            : `Chart of Accounts synchronized! (${res.createdCount} created, ${res.updatedCount} updated)`
+        )
+        const formatted: AccountItem[] = (res.accounts || []).map((a: any) => ({
+          id: a.id,
+          code: a.code,
+          name: a.name,
+          type: a.type as AccountItem['type'],
+          normalBalance: a.normalBalance as 'debit' | 'credit',
+          parentId: a.parentId,
+          currency: a.currency,
+          description: a.description,
+          isHeader: a.isHeader,
+          isSystem: a.isSystem,
+          isActive: a.isActive,
+          sortOrder: a.sortOrder,
+        }))
+        setAccounts(formatted)
+        setIsSyncModalOpen(false)
+        router.refresh()
+      } else {
+        toast.error(res.error || (isAr ? 'فشل في مزامنة الشجرة القياسية' : 'Failed to sync standard chart of accounts'))
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'An error occurred during synchronization')
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   // Delete modal state
   const [accountToDelete, setAccountToDelete] = useState<AccountItem | null>(null)
@@ -468,6 +510,26 @@ export function ChartOfAccountsClient({
           >
             <FileSpreadsheet size={15} />
             <span>{t.importExcel}</span>
+          </button>
+
+          {/* Sync / Re-initialize Standard COA */}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setIsSyncModalOpen(true)}
+            id="sync-standard-coa-btn"
+            title={isAr ? 'إعادة تهيئة وتحديث الدليل القياسي المعتمد' : isTr ? 'Standart Hesap Planını Güncelle' : 'Smart Sync Standard COA'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem',
+              borderColor: 'rgba(99, 102, 241, 0.4)',
+              color: 'var(--color-brand-600, #4f46e5)',
+              fontWeight: 600,
+            }}
+          >
+            <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
+            <span>{isAr ? 'تهيئة وتحديث الشجرة القياسية' : isTr ? 'Standart Planı Güncelle' : 'Sync Standard COA'}</span>
           </button>
 
           {/* Create Account */}
@@ -1173,6 +1235,134 @@ export function ChartOfAccountsClient({
             )}
           </div>
         )}
+      </Modal>
+
+      {/* Smart Sync & Re-initialize Standard COA Modal */}
+      <Modal
+        isOpen={isSyncModalOpen}
+        onClose={() => !isSyncing && setIsSyncModalOpen(false)}
+        title={isAr ? 'تهيئة وتحديث شجرة الحسابات القياسية' : isTr ? 'Standart Hesap Planını Güncelle' : 'Sync Standard Chart of Accounts'}
+        subtitle={
+          isAr
+            ? 'مزامنة الشجرة مع أحدث معايير النظام المحاسبي وربط الحسابات تلقائياً'
+            : 'Synchronize chart of accounts with latest accounting standards and linkages'
+        }
+        maxWidth="600px"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          {/* Information Card */}
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.04) 100%)',
+              border: '1.5px solid rgba(99, 102, 241, 0.25)',
+              borderRadius: 'var(--radius-lg, 12px)',
+              padding: '1.25rem',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', marginBottom: '0.75rem' }}>
+              <div
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  background: '#6366f1',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                <Sparkles size={18} />
+              </div>
+              <div>
+                <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary, #0f172a)' }}>
+                  {isAr ? 'المزامنة والتحديث الذكي الآمن (Smart Safe Sync)' : 'Smart Safe Sync & Repair'}
+                </strong>
+                <p style={{ margin: 0, fontSize: '0.78125rem', color: 'var(--text-secondary, #64748b)' }}>
+                  {isAr ? 'عملية فورية تضمن اكتمال وترابط حسابات منشأتك بالكامل' : 'Instant process to complete and link all business accounts'}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--text-primary, #1e293b)' }}>
+                <CheckCircle2 size={16} className="text-emerald-500" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <strong>{isAr ? 'تنزيل الحسابات القياسية المفقودة:' : 'Download Missing Accounts:'}</strong>{' '}
+                  {isAr
+                    ? 'إضافة أي حسابات نظامية جديدة (مثل الأصول، الخصوم، الضرائب، الأرباح، فروق العملة، والمصروفات).'
+                    : 'Creates all missing standard accounts across assets, liabilities, tax, equity, and expenses.'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--text-primary, #1e293b)' }}>
+                <CheckCircle2 size={16} className="text-emerald-500" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <strong>{isAr ? 'تصحيح الهيكلية والتبويب الهرمي:' : 'Repair Hierarchy:'}</strong>{' '}
+                  {isAr
+                    ? 'إعادة ضبط علاقات الحسابات الرئيسية والفرعية (Parent-Child) وترتيب ظهورها.'
+                    : 'Re-aligns parent-child accounts hierarchy and tree sort orders.'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--text-primary, #1e293b)' }}>
+                <CheckCircle2 size={16} className="text-emerald-500" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <strong>{isAr ? 'إعادة ربط الخزائن والبنوك تلقائياً:' : 'Link Cash & Bank GLs:'}</strong>{' '}
+                  {isAr
+                    ? 'ربط حسابات الصناديق والبنوك بالدليل المحاسبي لضمان الترحيل السليم لسندات القبض والصرف.'
+                    : 'Auto-links cash drawers and bank ledgers for seamless payment vouchers.'}
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', fontSize: '0.8125rem', color: 'var(--text-primary, #1e293b)' }}>
+                <ShieldCheck size={16} className="text-indigo-500" style={{ flexShrink: 0, marginTop: 2 }} />
+                <span>
+                  <strong>{isAr ? 'أمان تام 100%:' : '100% Safe:'}</strong>{' '}
+                  {isAr
+                    ? 'لن يتم حذف أي حساب مخصص أنشأته أنت، ولن تتأثر أي قيود أو فواتير أو حركات سابقة إطلاقاً.'
+                    : 'Your custom accounts and historical transactions are 100% preserved without any deletion.'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Modal Actions */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setIsSyncModalOpen(false)}
+              disabled={isSyncing}
+            >
+              {t.cancel}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleSyncStandardCOA}
+              disabled={isSyncing}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                background: 'linear-gradient(135deg, #4f46e5 0%, #6366f1 100%)',
+              }}
+            >
+              <RefreshCw size={15} className={isSyncing ? 'animate-spin' : ''} />
+              <span>
+                {isSyncing
+                  ? isAr
+                    ? 'جاري المزامنة والتحديث...'
+                    : 'Synchronizing...'
+                  : isAr
+                  ? 'تأكيد التهيئة والتحديث الآن'
+                  : 'Confirm & Sync Now'}
+              </span>
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

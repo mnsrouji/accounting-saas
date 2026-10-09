@@ -409,4 +409,37 @@ export async function toggleChartOfAccountStatusAction(
   }
 }
 
+/**
+ * Re-initialize & Smart Sync standard Chart of Accounts
+ * - Creates missing standard accounts.
+ * - Restores parent-child hierarchy and linkages without touching historical transactions.
+ */
+export async function syncStandardChartOfAccountsAction(businessId: string) {
+  try {
+    await requireBusinessAccess(businessId, 'accounting', 'write')
+
+    const result = await AccountingService.ensureStandardChartOfAccounts(businessId)
+
+    const accounts = await prisma.chartOfAccount.findMany({
+      where: { businessId },
+      orderBy: { code: 'asc' },
+    })
+
+    safeRevalidatePath(`/b/${businessId}/accounting/chart-of-accounts`)
+    safeRevalidatePath(`/b/${businessId}/accounting`)
+    safeRevalidatePath(`/b/${businessId}/reports`)
+
+    return serializeJson({
+      success: true as const,
+      createdCount: result.createdCount,
+      updatedCount: result.updatedCount,
+      totalAccounts: result.totalAccounts,
+      accounts,
+    })
+  } catch (error: any) {
+    return { success: false as const, error: error.message || 'فشل في مزامنة وتهيئة شجرة الحسابات' }
+  }
+}
+
+
 

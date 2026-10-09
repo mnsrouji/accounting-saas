@@ -577,20 +577,25 @@ export class AccountingService {
   }
 
   /**
-   * Idempotently ensure the business has the standard Chart of Accounts.
-   * If any standard account is missing, it is created and properly linked to its parent.
+   * Idempotently ensure the business has the complete standard Chart of Accounts.
+   * - Creates any missing standard accounts.
+   * - Restores parent-child hierarchy and sort orders.
+   * - Safely links CashAccount and BankAccount records without touching historical journal entries.
    */
   static async ensureStandardChartOfAccounts(businessId: string, txPrisma?: any) {
     const client = txPrisma || prisma
     const existing = await client.chartOfAccount.findMany({
       where: { businessId },
-      select: { id: true, code: true, parentId: true },
+      select: { id: true, code: true, parentId: true, name: true, type: true, isSystem: true, isHeader: true },
     })
-    const existingCodeMap = new Map<string, { id: string; parentId: string | null }>(
-      existing.map((a: { id: string; code: string; parentId: string | null }) => [a.code, a])
+    const existingCodeMap = new Map<string, any>(
+      existing.map((a: any) => [a.code, a])
     )
 
-    // 1. Create missing accounts
+    let createdCount = 0
+    let updatedCount = 0
+
+    // 1. Create missing standard accounts
     const toCreate = DEFAULT_CHART_OF_ACCOUNTS.filter((acc) => !existingCodeMap.has(acc.code))
     if (toCreate.length > 0) {
       await client.chartOfAccount.createMany({
@@ -606,12 +611,13 @@ export class AccountingService {
         })),
         skipDuplicates: true,
       })
+      createdCount = toCreate.length
     }
 
     // 2. Fetch all accounts again to establish parent-child relationships (parentId)
     const allAccounts = await client.chartOfAccount.findMany({
       where: { businessId },
-      select: { id: true, code: true, parentId: true },
+      select: { id: true, code: true, parentId: true, name: true, type: true, isSystem: true, isHeader: true },
     })
     const codeToIdMap = new Map<string, string>(
       allAccounts.map((a: { id: string; code: string }) => [a.code, a.id])
@@ -619,18 +625,72 @@ export class AccountingService {
 
     // 3. Link parentId for any account defined in DEFAULT_CHART_OF_ACCOUNTS that lacks parentId
     for (const def of DEFAULT_CHART_OF_ACCOUNTS) {
-      if (def.parentCode) {
-        const currentId = codeToIdMap.get(def.code)
-        const parentId = codeToIdMap.get(def.parentCode)
-        const currentAcc = allAccounts.find((a: { id: string; code: string; parentId: string | null }) => a.code === def.code)
+      const currentId = codeToIdMap.get(def.code)
+      if (!currentId) continue
 
-        if (currentId && parentId && (!currentAcc?.parentId || currentAcc.parentId !== parentId)) {
-          await client.chartOfAccount.update({
-            where: { id: currentId },
-            data: { parentId },
-          })
+      const currentAcc = allAccounts.find((a: any) => a.code === def.code)
+      let needsUpdate = false
+      const updateData: Record<string, any> = {}
+
+      if (def.parentCode) {
+        const parentId = codeToIdMap.get(def.parentCode)
+        if (parentId && currentAcc?.parentId !== parentId) {
+          updateData.parentId = parentId
+          needsUpdate = true
         }
       }
+
+      // Sync system flag and isHeader if standard
+      if (def.isSystem !== undefined && currentAcc?.isSystem !== def.isSystem) {
+        updateData.isSystem = def.isSystem
+        needsUpdate = true
+      }
+      if (def.isHeader !== undefined && currentAcc?.isHeader !== def.isHeader) {
+        updateData.isHeader = def.isHeader
+        needsUpdate = true
+      }
+
+      if (needsUpdate) {
+        await client.chartOfAccount.update({
+          where: { id: currentId },
+          data: updateData,
+        })
+        updatedCount++
+      }
+    }
+
+    // 4. Auto-link Cash Accounts if missing accountId
+    const defaultCashGl = codeToIdMap.get('1110')
+    const pettyCashGl = codeToIdMap.get('1120')
+    if (defaultCashGl) {
+      await client.cashAccount.updateMany({
+        where: { businessId, accountId: null, isPettyCash: false },
+        data: { accountId: defaultCashGl },
+      })
+    }
+    if (pettyCashGl) {
+      await client.cashAccount.updateMany({
+        where: { businessId, accountId: null, isPettyCash: true },
+        data: { accountId: pettyCashGl },
+      })
+    }
+
+    // 5. Auto-link Bank Accounts if missing accountId
+    const defaultBankGl = codeToIdMap.get('1210')
+    if (defaultBankGl) {
+      await client.bankAccount.updateMany({
+        where: { businessId, accountId: null },
+        data: { accountId: defaultBankGl },
+      })
+    }
+
+    const totalAccounts = await client.chartOfAccount.count({ where: { businessId } })
+
+    return {
+      success: true,
+      createdCount,
+      updatedCount,
+      totalAccounts,
     }
   }
 }
@@ -661,16 +721,21 @@ export const DEFAULT_CHART_OF_ACCOUNTS: DefaultAccountDefinition[] = [
 
   // 1.2 Receivables / العملاء والذمم المدينة
   { code: '1300', name: 'Accounts Receivable (العملاء والذمم المدينة)', type: 'asset', normalBalance: 'debit', isSystem: true, parentCode: '1000', sortOrder: 130 },
+  { code: '1350', name: 'Notes Receivable (أوراق القبض والشيكات برسم التحصيل)', type: 'asset', normalBalance: 'debit', parentCode: '1000', sortOrder: 135 },
 
   // 1.3 Inventory / المخزون
   { code: '1400', name: 'Merchandise Inventory (مخزون البضائع)', type: 'asset', normalBalance: 'debit', isSystem: true, parentCode: '1000', sortOrder: 140 },
+  { code: '1450', name: 'Goods in Transit (بضاعة بالطريق واعتمادات مستندية)', type: 'asset', normalBalance: 'debit', parentCode: '1000', sortOrder: 145 },
 
-  // 1.4 Prepayments / المصروفات المدفوعة مقدماً
+  // 1.4 Prepayments & Accrued Assets / المصروفات المدفوعة مقدماً والإيرادات المستحقة
   { code: '1500', name: 'Prepaid Expenses (المصروفات المدفوعة مقدماً)', type: 'asset', normalBalance: 'debit', parentCode: '1000', sortOrder: 150 },
+  { code: '1550', name: 'Accrued Revenues (الإيرادات المستحقة)', type: 'asset', normalBalance: 'debit', parentCode: '1000', sortOrder: 155 },
 
   // 1.5 Fixed Assets / الأصول الثابتة
   { code: '1600', name: 'Fixed Assets (الأصول الثابتة)', type: 'asset', normalBalance: 'debit', isHeader: true, parentCode: '1000', sortOrder: 160 },
   { code: '1610', name: 'Equipment & Office Furniture (المعدات والأثاث المكتبي)', type: 'asset', normalBalance: 'debit', parentCode: '1600', sortOrder: 161 },
+  { code: '1620', name: 'Computers & IT Hardware (أجهزة الحاسب والتقنية)', type: 'asset', normalBalance: 'debit', parentCode: '1600', sortOrder: 162 },
+  { code: '1630', name: 'Vehicles & Transportation (السيارات ووسائل النقل)', type: 'asset', normalBalance: 'debit', parentCode: '1600', sortOrder: 163 },
   { code: '1690', name: 'Accumulated Depreciation (مجمع إهلاك الأصول الثابتة)', type: 'asset', normalBalance: 'credit', parentCode: '1600', sortOrder: 169 },
 
   // ==========================================
@@ -680,20 +745,22 @@ export const DEFAULT_CHART_OF_ACCOUNTS: DefaultAccountDefinition[] = [
 
   // 2.1 Payables / الموردين والذمم الدائنة
   { code: '2100', name: 'Accounts Payable (الموردون والذمم الدائنة)', type: 'liability', normalBalance: 'credit', isSystem: true, parentCode: '2000', sortOrder: 210 },
+  { code: '2150', name: 'Notes Payable (أوراق الدفع والشيكات الآجلة)', type: 'liability', normalBalance: 'credit', parentCode: '2000', sortOrder: 215 },
 
   // 2.2 Taxes / الضرائب
   { code: '2200', name: 'Sales Tax / Output VAT Payable (ضريبة المبيعات / القيمة المضافة المستحقة)', type: 'liability', normalBalance: 'credit', isSystem: true, parentCode: '2000', sortOrder: 220 },
   { code: '2210', name: 'Input VAT Recoverable (ضريبة المدخلات القابلة للاسترداد)', type: 'liability', normalBalance: 'debit', isSystem: true, parentCode: '2000', sortOrder: 221 },
 
-  // 2.3 Accruals & Long-term / المصروفات المستحقة والالتزامات الأخرى
+  // 2.3 Accruals & Customer Advances / المصروفات المستحقة والدفعات المقدمة
   { code: '2300', name: 'Accrued Operating Expenses (المصروفات والالتزامات المستحقة)', type: 'liability', normalBalance: 'credit', parentCode: '2000', sortOrder: 230 },
+  { code: '2350', name: 'Customer Advances & Deposits (دفعات مقدمة من العملاء)', type: 'liability', normalBalance: 'credit', parentCode: '2000', sortOrder: 235 },
   { code: '2400', name: 'Long-term Liabilities & Loans (قروض والتزامات طويلة الأجل)', type: 'liability', normalBalance: 'credit', parentCode: '2000', sortOrder: 240 },
 
   // ==========================================
   // 3. EQUITY (حقوق الملكية - 3000)
   // ==========================================
   { code: '3000', name: 'Equity (حقوق الملكية)', type: 'equity', normalBalance: 'credit', isHeader: true, sortOrder: 300 },
-  { code: '3100', name: "Owner's Contributed Capital (رأس المال المدفوع)", type: 'equity', normalBalance: 'credit', isSystem: true, parentCode: '3000', sortOrder: 310 },
+  { code: '3100', name: "Owner's Contributed Capital (رأس المال المدفوع والأرصدة الافتتاحية)", type: 'equity', normalBalance: 'credit', isSystem: true, parentCode: '3000', sortOrder: 310 },
   { code: '3200', name: 'Retained Earnings (الأرباح المبقاة / المحتجزة)', type: 'equity', normalBalance: 'credit', isSystem: true, parentCode: '3000', sortOrder: 320 },
   { code: '3300', name: "Owner's Drawings (جاري الشركاء / المسحوبات)", type: 'equity', normalBalance: 'debit', parentCode: '3000', sortOrder: 330 },
 
@@ -702,21 +769,27 @@ export const DEFAULT_CHART_OF_ACCOUNTS: DefaultAccountDefinition[] = [
   // ==========================================
   { code: '4000', name: 'Revenue (الإيرادات التشغيلية)', type: 'revenue', normalBalance: 'credit', isHeader: true, sortOrder: 400 },
   { code: '4100', name: 'Sales Revenue (إيرادات المبيعات)', type: 'revenue', normalBalance: 'credit', isSystem: true, parentCode: '4000', sortOrder: 410 },
+  { code: '4150', name: 'Sales Returns and Allowances (مردودات ومسموحات المبيعات)', type: 'revenue', normalBalance: 'debit', parentCode: '4000', sortOrder: 415 },
   { code: '4200', name: 'Service Revenue (إيرادات الخدمات والاستشارات)', type: 'revenue', normalBalance: 'credit', parentCode: '4000', sortOrder: 420 },
-  { code: '4300', name: 'Sales Discounts Allowed (خصم مسموح به)', type: 'revenue', normalBalance: 'debit', parentCode: '4000', sortOrder: 430 },
+  { code: '4300', name: 'Sales Discounts Allowed (خصم مسموح به على المبيعات)', type: 'revenue', normalBalance: 'debit', parentCode: '4000', sortOrder: 430 },
   { code: '4900', name: 'Other Income & Gains (إيرادات وأرباح أخرى)', type: 'revenue', normalBalance: 'credit', parentCode: '4000', sortOrder: 490 },
+  { code: '4910', name: 'Gain on Foreign Currency Exchange (أرباح فروق أسعار صرف العملات)', type: 'revenue', normalBalance: 'credit', isSystem: true, parentCode: '4000', sortOrder: 491 },
 
   // ==========================================
   // 5. EXPENSES (المصروفات - 5000)
   // ==========================================
   { code: '5000', name: 'Expenses (المصروفات وتكلفة النشاط)', type: 'expense', normalBalance: 'debit', isHeader: true, sortOrder: 500 },
   { code: '5100', name: 'Cost of Goods Sold (تكلفة البضاعة المباعة)', type: 'expense', normalBalance: 'debit', isSystem: true, parentCode: '5000', sortOrder: 510 },
+  { code: '5120', name: 'Purchase Returns and Allowances (مردودات ومسموحات المشتريات)', type: 'expense', normalBalance: 'credit', parentCode: '5000', sortOrder: 512 },
+  { code: '5130', name: 'Purchase Discounts Received (خصم مكتسب على المشتريات)', type: 'expense', normalBalance: 'credit', parentCode: '5000', sortOrder: 513 },
+  { code: '5150', name: 'Inventory Shrinkage & Loss (عجز وهالك وفروقات الجرد)', type: 'expense', normalBalance: 'debit', isSystem: true, parentCode: '5000', sortOrder: 515 },
   { code: '5200', name: 'Salaries & Staff Wages (الرواتب والأجور ومستحقات الموظفين)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 520 },
-  { code: '5300', name: 'Facility Rent Expense (مصروف الإيجار)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 530 },
-  { code: '5400', name: 'Utilities & Internet (المنافع والكهرباء والاتصالات)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 540 },
+  { code: '5300', name: 'Facility Rent Expense (مصروف الإيجار والمقرات)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 530 },
+  { code: '5400', name: 'Utilities & Internet (المنافع والكهرباء والمياه والاتصالات)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 540 },
   { code: '5500', name: 'Marketing & Advertising (التسويق والدعاية والإعلان)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 550 },
   { code: '5600', name: 'Office Supplies & Admin (المستلزمات والمصاريف الإدارية)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 560 },
-  { code: '5700', name: 'Bank & Payment Fees (رسوم وعمولات بنكية)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 570 },
-  { code: '5800', name: 'Depreciation Expense (مصروف إهلاك الأصول)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 580 },
+  { code: '5700', name: 'Bank & Payment Fees (رسوم وعمولات بنكية ومصرفية)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 570 },
+  { code: '5800', name: 'Depreciation Expense (مصروف إهلاك الأصول الثابتة)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 580 },
   { code: '5900', name: 'Other Operating Expenses (مصروفات تشغيلية وتسويات أخرى)', type: 'expense', normalBalance: 'debit', parentCode: '5000', sortOrder: 590 },
+  { code: '5910', name: 'Loss on Foreign Currency Exchange (خسائر فروق أسعار صرف العملات)', type: 'expense', normalBalance: 'debit', isSystem: true, parentCode: '5000', sortOrder: 591 },
 ]
